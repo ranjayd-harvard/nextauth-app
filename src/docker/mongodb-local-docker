@@ -1,0 +1,4 @@
+docker run --name mongodb -d -p 27017:27017 mongo:latest
+
+# MongoDB
+#MONGODB_URI=mongodb://localhost:27017/nextauth-app
