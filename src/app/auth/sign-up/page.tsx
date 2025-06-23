@@ -481,10 +481,10 @@ function PhoneSignUpForm({
       if (response.ok) {
         if (data.autoLinked) {
           onSuccess('Phone registered and automatically linked! Please verify your phone number.')
-        } else if (data.linkingSuggestion && data.linkingSuggestion.shouldSuggest) {
-          // Handle linking suggestions
-          console.log('🔗 Showing linking suggestion')
-          onLinkingSuggestion(data.linkingSuggestion, data.userId)
+        // } else if (data.linkingSuggestion && data.linkingSuggestion.shouldSuggest) {
+        //   // Handle linking suggestions
+        //   console.log('🔗 Showing linking suggestion')
+        //   onLinkingSuggestion(data.linkingSuggestion, data.userId)
         } else {
           // Normal flow - proceed to verification
           console.log('📱 Proceeding to verification step')
@@ -505,25 +505,50 @@ function PhoneSignUpForm({
     e.preventDefault()
     setIsLoading(true)
     onError('')
-
+  
     try {
+      // First, verify the phone number
       const response = await fetch('/api/auth/verify-phone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phoneNumber: formData.phoneNumber,
-          code: formData.verificationCode
+          code: formData.verificationCode,
+          countryCode: formData.countryCode
         })
       })
-
+  
       const data = await response.json()
-
+  
       if (response.ok) {
-        onSuccess('Phone number verified successfully! Redirecting to your dashboard...')
+        // Verification successful! Now automatically sign the user in
+        console.log('📱 Phone verified successfully, signing in...')
+        
+        const signInResult = await signIn('phone', {
+          phoneNumber: formData.phoneNumber,
+          code: formData.verificationCode,
+          redirect: false, // Don't redirect automatically
+        })
+  
+        if (signInResult?.ok) {
+          onSuccess('Phone verified and signed in successfully! Welcome! 🎉')
+          // Redirect to dashboard after a brief delay
+          setTimeout(() => {
+            window.location.href = '/dashboard'
+          }, 1500)
+        } else {
+          // Verification worked but sign-in failed - still a success
+          onSuccess('Phone verified successfully! Please sign in to continue.')
+          // Redirect to sign-in page with success message
+          setTimeout(() => {
+            window.location.href = '/auth/sign-in?message=phone-verified'
+          }, 2000)
+        }
       } else {
         onError(data.error || 'Invalid verification code')
       }
     } catch (error) {
+      console.error('📱 Verification error:', error)
       onError('An error occurred. Please try again.')
     } finally {
       setIsLoading(false)
