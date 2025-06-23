@@ -1,7 +1,7 @@
 // src/app/api/user/profile/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth'
 import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 import { EnhancedAuthIntegration } from '@/lib/enhanced-auth-integration'
@@ -317,6 +317,117 @@ export async function PATCH(req: NextRequest) {
     console.error('❌ Patch profile error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    // FIXED: Import from enhanced auth
+    //const { enhancedAuthOptions as authOptions } = await import('@/lib/enhanced-auth')
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const body = await req.json().catch(() => ({}))
+    const { confirmDelete, transferGroupOwnership } = body
+
+    if (!confirmDelete) {
+      return NextResponse.json(
+        { error: 'Account deletion must be confirmed' },
+        { status: 400 }
+      )
+    }
+
+    console.log(`⚠️ Account deletion request for user: ${session.user.id}`)
+
+    // Get current profile to check group status
+    const currentProfile = await EnhancedAuthIntegration.getUserCompleteProfile(session.user.id)
+    
+    if (!currentProfile) {
+      return NextResponse.json(
+        { error: 'User profile not found' },
+        { status: 404 }
+      )
+    }
+
+    const client = await clientPromise
+    const users = client.db().collection('users')
+
+    // Check if user is a group master with other active accounts
+    if (currentProfile.groupInfo?.isMaster && currentProfile.groupInfo.activeAccounts > 1) {
+      if (!transferGroupOwnership) {
+        return NextResponse.json({
+          error: 'Cannot delete master account with linked accounts',
+          requiresGroupTransfer: true,
+          activeAccounts: currentProfile.groupInfo.activeAccounts,
+          linkedAccounts: currentProfile.linkedAccounts?.filter(a => a.isActive && a._id.toString() !== session.user.id) || []
+        }, { status: 409 })
+      }
+
+      // Transfer group ownership to another active account
+      const otherActiveAccount = currentProfile.linkedAccounts?.find(
+        a => a.isActive && a._id.toString() !== session.user.id
+      )
+
+      if (otherActiveAccount) {
+        await users.updateOne(
+          { _id: otherActiveAccount._id },
+          { 
+            $set: { 
+              isMaster: true,
+              updatedAt: new Date()
+            }
+          }
+        )
+        console.log(`👑 Transferred group ownership to: ${otherActiveAccount._id}`)
+      }
+    }
+
+    // Soft delete the account
+    const deleteResult = await users.updateOne(
+      { _id: new ObjectId(session.user.id) },
+      { 
+        $set: {
+          accountStatus: 'deactivated',
+          isActive: false,
+          isMaster: false,
+          deactivatedAt: new Date(),
+          updatedAt: new Date()
+        }
+      }
+    )
+
+    if (deleteResult.matchedCount === 0) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    console.log(`✅ Account deactivated successfully: ${session.user.id}`)
+
+    // FIXED: Complete JSON response
+    return NextResponse.json({
+      success: true,
+      message: 'Account has been deactivated successfully',
+      deactivatedAt: new Date().toISOString(),
+      groupOwnershipTransferred: currentProfile.groupInfo?.isMaster && currentProfile.groupInfo.activeAccounts > 1
+    }, { status: 200 })
+
+  } catch (error) {
+    console.error('❌ Account deletion error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     )
   }

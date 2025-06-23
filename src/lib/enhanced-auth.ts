@@ -95,40 +95,69 @@ export const enhancedAuthOptions: NextAuthOptions = {
           console.log('🔐 Missing credentials')
           return null
         }
-
+    
+        // Format phone number function (same as used in registration)
+        function formatPhoneNumber(phoneNumber: string, countryCode: string = 'US'): string {
+          const cleaned = phoneNumber.replace(/\D/g, '')
+          
+          const countryPrefixes: Record<string, string> = {
+            'US': '+1', 'CA': '+1', 'GB': '+44', 'IN': '+91',
+            'AU': '+61', 'DE': '+49', 'FR': '+33', 'JP': '+81',
+            'BR': '+55', 'MX': '+52', 'IT': '+39', 'ES': '+34',
+            'NL': '+31', 'SE': '+46', 'NO': '+47', 'DK': '+45',
+            'FI': '+358', 'PL': '+48', 'CZ': '+420', 'HU': '+36'
+          }
+          
+          const prefix = countryPrefixes[countryCode] || '+1'
+          
+          if (phoneNumber.startsWith('+')) {
+            return phoneNumber
+          }
+          
+          if ((countryCode === 'US' || countryCode === 'CA') && cleaned.startsWith('1')) {
+            return `+1${cleaned.substring(1)}`
+          }
+          
+          return `${prefix}${cleaned}`
+        }
+    
+        // CRITICAL FIX: Format the phone number before lookup
+        const formattedPhone = formatPhoneNumber(credentials.phoneNumber)
+        console.log('🔐 Formatted phone for lookup:', formattedPhone)
+    
         // Use enhanced authentication to find user with group support
         const authResult = await EnhancedAuthIntegration.authenticateUserWithGroup({
-          phoneNumber: credentials.phoneNumber
+          phoneNumber: formattedPhone  // Use formatted phone
         })
-
+    
         if (!authResult?.user) {
-          console.log('🔐 User not found:', credentials.phoneNumber)
+          console.log('🔐 User not found with formatted phone:', formattedPhone)
           return null
         }
-
+    
         const user = authResult.user
-
+    
         if (!user.phoneVerified) {
           console.log('🔐 Phone not verified for user:', user._id)
           throw new Error('Phone number is not verified')
         }
-
+    
         console.log('🔐 Verifying code with Twilio...')
-
-        // Verify code using Twilio Verify
+    
+        // Verify code using Twilio Verify (use formatted phone)
         const { verifyCode } = await import('@/lib/sms')
-        const verificationResult = await verifyCode(credentials.phoneNumber, credentials.code)
+        const verificationResult = await verifyCode(formattedPhone, credentials.code)
         
         if (!verificationResult.success) {
           console.log('🔐 Code verification failed:', verificationResult.error)
           throw new Error('Invalid or expired login code')
         }
-
+    
         console.log('🔐 Phone authentication successful for user:', user._id)
-
+    
         // Update user activity
         await EnhancedAuthIntegration.updateUserActivity(user._id.toString())
-
+    
         return {
           id: user._id.toString(),
           phoneNumber: user.phoneNumber || user.primaryPhone,

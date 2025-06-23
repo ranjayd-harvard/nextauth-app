@@ -134,33 +134,60 @@ export default function AccountSettings() {
       setError('Please type "DELETE" to confirm account deletion')
       return
     }
-
-    setIsDeletingAccount(true)
+  
+    setIsLoading(true)  // Using your existing isLoading state
     setError('')
-
+  
     try {
       const response = await fetch('/api/user/complete-profile', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ 
           confirmDelete: true,
           transferGroupOwnership: true 
         })
       })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        // Account deleted successfully, sign out
+  
+      // First check if the response is ok
+      if (!response.ok) {
+        // Try to get error message from response
+        let errorMessage = 'Failed to delete account'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // If JSON parsing fails, use default message
+          errorMessage = `Server error: ${response.status}`
+        }
+        setError(errorMessage)
+        return
+      }
+  
+      // Try to parse successful response
+      let data
+      try {
+        data = await response.json()
+      } catch {
+        // If JSON parsing fails but response was ok, assume success
+        console.log('Account deletion completed')
+        await signOut({ callbackUrl: '/' })
+        return
+      }
+  
+      // Handle successful response with data
+      if (data.success) {
         await signOut({ callbackUrl: '/' })
       } else {
         setError(data.error || 'Failed to delete account')
       }
+  
     } catch (error) {
-      console.error('Error deleting account:', error)
+      console.error('Delete account error:', error)
       setError('An error occurred while deleting your account')
     } finally {
-      setIsDeletingAccount(false)
+      setIsLoading(false)  // Using your existing isLoading state
     }
   }
 

@@ -463,7 +463,7 @@ function PhoneSignUpForm({
     e.preventDefault()
     setIsLoading(true)
     onError('')
-
+  
     try {
       const response = await fetch('/api/auth/enhanced-phone-register', {
         method: 'POST',
@@ -474,21 +474,27 @@ function PhoneSignUpForm({
           countryCode: formData.countryCode
         })
       })
-
+  
       const data = await response.json()
-
+      console.log('📱 Registration response:', data) // Debug log
+  
       if (response.ok) {
         if (data.autoLinked) {
           onSuccess('Phone registered and automatically linked! Please verify your phone number.')
-        } else if (data.linkingSuggestion?.shouldSuggest) {
+        } else if (data.linkingSuggestion && data.linkingSuggestion.shouldSuggest) {
+          // Handle linking suggestions
+          console.log('🔗 Showing linking suggestion')
           onLinkingSuggestion(data.linkingSuggestion, data.userId)
         } else {
+          // Normal flow - proceed to verification
+          console.log('📱 Proceeding to verification step')
           setStep('verify')
         }
       } else {
         onError(data.error || 'Failed to register phone number')
       }
     } catch (error) {
+      console.error('📱 Phone registration error:', error)
       onError('An error occurred. Please try again.')
     } finally {
       setIsLoading(false)

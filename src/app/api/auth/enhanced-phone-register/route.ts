@@ -202,16 +202,22 @@ export async function POST(req: NextRequest) {
 
     // Store verification code if using basic SMS (not Twilio Verify)
     if (verificationResult.code) {
-      await TokenManager.createToken(
-        formattedPhone,
-        'phone_verification',
-        10, // 10 minutes
-        result.userId
-      )
+      try {
+        await TokenManager.createToken(
+          formattedPhone,
+          'phone_verification',
+          10, // 10 minutes
+          result.userId
+        )
+        console.log('📱 Verification token stored successfully')
+      } catch (tokenError) {
+        console.error('❌ Failed to store verification token:', tokenError)
+        // Don't fail the request for token storage issues
+      }
     }
 
-    // Prepare response
-    const response = {
+    // Prepare base response
+    const response: any = {
       success: true,
       message: result.autoLinked 
         ? 'Phone registered and automatically linked with your existing accounts! Please verify your phone number.'
@@ -219,23 +225,48 @@ export async function POST(req: NextRequest) {
       phoneNumber: formattedPhone,
       userId: result.userId,
       requiresVerification: true,
-      autoLinked: result.autoLinked,
-      groupId: result.groupId,
-      linkingSuggestion: result.linkingSuggestion,
-      verificationSid: verificationResult.sid,
-      // Only include in development
-      verificationCode: process.env.NODE_ENV === 'development' ? verificationResult.code : undefined
+      verificationSid: verificationResult.sid
     }
 
-    // Add linking suggestion details if available
+    // Add optional fields safely
+    if (result.autoLinked !== undefined) {
+      response.autoLinked = result.autoLinked
+    }
+
+    if (result.groupId) {
+      response.groupId = result.groupId
+    }
+
+    // Add development-only verification code
+    if (process.env.NODE_ENV === 'development' && verificationResult.code) {
+      response.verificationCode = verificationResult.code
+    }
+
+    // Add linking suggestion details if available (safely)
     if (result.linkingSuggestion && result.linkingSuggestion.shouldSuggest) {
-      response.linkingSuggestion = {
-        shouldSuggest: result.linkingSuggestion.shouldSuggest,
-        confidence: result.linkingSuggestion.confidence,
-        candidatesCount: result.linkingSuggestion.candidates.length,
-        highConfidenceCandidates: result.linkingSuggestion.candidates.filter(c => c.confidence >= 90).length
+      try {
+        response.linkingSuggestion = {
+          shouldSuggest: result.linkingSuggestion.shouldSuggest,
+          confidence: result.linkingSuggestion.confidence || 0,
+          candidatesCount: Array.isArray(result.linkingSuggestion.candidates) 
+            ? result.linkingSuggestion.candidates.length 
+            : 0,
+          highConfidenceCandidates: Array.isArray(result.linkingSuggestion.candidates)
+            ? result.linkingSuggestion.candidates.filter(c => c.confidence >= 90).length
+            : 0
+        }
+      } catch (linkingError) {
+        console.error('❌ Error processing linking suggestion:', linkingError)
+        // Don't include linking suggestion if there's an error
       }
     }
+
+    console.log('✅ Phone registration successful, returning response:', {
+      phoneNumber: formattedPhone,
+      userId: result.userId,
+      autoLinked: result.autoLinked,
+      hasLinkingSuggestion: !!response.linkingSuggestion
+    })
 
     return NextResponse.json(response, { status: 201 })
 
@@ -258,7 +289,9 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
+
 }
+
 
 // GET method to check if phone number is available
 export async function GET(req: NextRequest) {
