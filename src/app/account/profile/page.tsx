@@ -13,6 +13,10 @@ interface UserProfile {
     email?: string
     phoneNumber?: string
     image?: string
+    bio?: string
+    location?: string
+    website?: string
+    timezone?: string
     registerSource: string
     avatarType: string
     linkedEmails: string[]
@@ -52,7 +56,8 @@ export default function ProfilePage() {
     bio: '',
     location: '',
     website: '',
-    timezone: 'UTC'
+    timezone: 'UTC',
+    phoneNumber: ''
   })
 
   useEffect(() => {
@@ -64,17 +69,20 @@ export default function ProfilePage() {
   const fetchUserProfile = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/user/complete-profile')
+      const response = await fetch('/api/user/profile')
       if (response.ok) {
         const data = await response.json()
         setUserProfile(data.profile)
         setEditData({
           name: data.profile.user.name || '',
-          bio: '', // Would come from backend
-          location: '', // Would come from backend
-          website: '', // Would come from backend
-          timezone: 'UTC' // Would come from backend
+          bio: data.profile.user.bio || '',
+          location: data.profile.user.location || '',
+          website: data.profile.user.website || '',
+          timezone: data.profile.user.timezone || 'UTC',
+          phoneNumber: data.profile.user.phoneNumber || ''
         })
+      } else {
+        setError('Failed to load profile')
       }
     } catch (error) {
       console.error('Error fetching user profile:', error)
@@ -90,41 +98,53 @@ export default function ProfilePage() {
     setSuccess('')
 
     try {
-      const response = await fetch('/api/user/complete-profile', {
+      const response = await fetch('/api/user/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editData.name,
-          bio: editData.bio,
-          location: editData.location,
-          website: editData.website,
-          timezone: editData.timezone
-        })
+        body: JSON.stringify(editData)
       })
+
+      const data = await response.json()
 
       if (response.ok) {
         setSuccess('Profile updated successfully!')
+        setUserProfile(data.profile)
         setIsEditing(false)
-        await fetchUserProfile()
-        await update() // Update NextAuth session
+        
+        // Update session if name changed
+        if (editData.name !== userProfile?.user.name) {
+          await update({
+            ...session,
+            user: {
+              ...session?.user,
+              name: editData.name
+            }
+          })
+        }
       } else {
-        const data = await response.json()
         setError(data.error || 'Failed to update profile')
       }
     } catch (error) {
-      setError('An error occurred while updating your profile')
+      console.error('Error saving profile:', error)
+      setError('Failed to save profile')
     } finally {
       setIsSaving(false)
     }
   }
 
-  const getAuthMethodIcon = (method: string) => {
-    switch (method) {
-      case 'credentials': return '🔐'
-      case 'phone': return '📱'
-      case 'google': return '🔴'
-      case 'github': return '⚫'
-      default: return '🌐'
+  const handleFieldUpdate = async (field: string, value: any) => {
+    try {
+      const response = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, value })
+      })
+
+      if (response.ok) {
+        await fetchUserProfile() // Refresh profile
+      }
+    } catch (error) {
+      console.error('Error updating field:', error)
     }
   }
 
@@ -142,25 +162,22 @@ export default function ProfilePage() {
     return `${Math.floor(days / 365)} years`
   }
 
+  const timezones = [
+    'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+    'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai',
+    'Australia/Sydney', 'Pacific/Auckland'
+  ]
+
   if (isLoading) {
     return (
       <ProtectedRoute>
         <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
           <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-            <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
-              <div className="flex items-center space-x-4">
-                <div className="w-20 h-20 bg-gray-200 rounded-full"></div>
-                <div className="space-y-2">
-                  <div className="h-6 bg-gray-200 rounded w-32"></div>
-                  <div className="h-4 bg-gray-200 rounded w-48"></div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-16 bg-gray-200 rounded"></div>
-                ))}
-              </div>
+            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="space-y-4">
+              <div className="h-32 bg-gray-200 rounded"></div>
+              <div className="h-64 bg-gray-200 rounded"></div>
             </div>
           </div>
         </div>
@@ -176,7 +193,7 @@ export default function ProfilePage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center space-x-3">
               <span>👤</span>
-              <span>Profile</span>
+              <span>My Profile</span>
             </h1>
             <p className="mt-2 text-gray-600">
               Manage your personal information and account details
@@ -185,16 +202,16 @@ export default function ProfilePage() {
           
           <div className="flex items-center space-x-3">
             <Link
-              href="/account/security"
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-            >
-              🔐 Security Settings
-            </Link>
-            <Link
               href="/account/settings"
               className="text-blue-600 hover:text-blue-700 text-sm font-medium"
             >
               ⚙️ Account Settings
+            </Link>
+            <Link
+              href="/account/security"
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              🔐 Security
             </Link>
           </div>
         </div>
@@ -241,6 +258,15 @@ export default function ProfilePage() {
                           setIsEditing(false)
                           setError('')
                           setSuccess('')
+                          // Reset edit data
+                          setEditData({
+                            name: userProfile?.user.name || '',
+                            bio: userProfile?.user.bio || '',
+                            location: userProfile?.user.location || '',
+                            website: userProfile?.user.website || '',
+                            timezone: userProfile?.user.timezone || 'UTC',
+                            phoneNumber: userProfile?.user.phoneNumber || ''
+                          })
                         }}
                         className="text-gray-600 hover:text-gray-700 text-sm font-medium"
                       >
@@ -263,9 +289,9 @@ export default function ProfilePage() {
                 <div className="flex items-start space-x-6 mb-8">
                   <div className="relative">
                     <img
-                      src={userProfile?.user.image || ''}
-                      alt={userProfile?.user.name || ''}
-                      className="w-20 h-20 rounded-full border-4 border-gray-200"
+                      src={userProfile?.user.image || '/default-avatar.png'}
+                      alt={userProfile?.user.name || 'User'}
+                      className="w-20 h-20 rounded-full border-4 border-gray-200 object-cover"
                     />
                     <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-600 border-2 border-white rounded-full flex items-center justify-center">
                       <span className="text-white text-xs">📷</span>
@@ -293,7 +319,7 @@ export default function ProfilePage() {
                     )}
                     <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
                       <span>📅 Joined {formatDate(userProfile?.user.createdAt || '')}</span>
-                      <span>🕒 Member for {getAccountAgeText(userProfile?.stats.accountAge || 0)}</span>
+                      <span>🕒 Member for {getAccountAgeText(userProfile?.stats?.accountAge || 0)}</span>
                     </div>
                   </div>
                 </div>
@@ -314,7 +340,24 @@ export default function ProfilePage() {
                           placeholder="Enter your full name"
                         />
                       ) : (
-                        <p className="text-gray-900 py-2">{userProfile?.user.name}</p>
+                        <p className="text-gray-900 py-2">{userProfile?.user.name || 'Not set'}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Phone Number
+                      </label>
+                      {isEditing ? (
+                        <input
+                          type="tel"
+                          value={editData.phoneNumber}
+                          onChange={(e) => setEditData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Enter your phone number"
+                        />
+                      ) : (
+                        <p className="text-gray-900 py-2">{userProfile?.user.phoneNumber || 'Not set'}</p>
                       )}
                     </div>
 
@@ -328,10 +371,10 @@ export default function ProfilePage() {
                           value={editData.location}
                           onChange={(e) => setEditData(prev => ({ ...prev, location: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="City, Country"
+                          placeholder="Enter your location"
                         />
                       ) : (
-                        <p className="text-gray-900 py-2">{editData.location || 'Not specified'}</p>
+                        <p className="text-gray-900 py-2">{userProfile?.user.location || 'Not set'}</p>
                       )}
                     </div>
 
@@ -348,19 +391,24 @@ export default function ProfilePage() {
                           placeholder="https://example.com"
                         />
                       ) : (
-                        <p className="text-gray-900 py-2">
-                          {editData.website ? (
-                            <a href={editData.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">
-                              {editData.website}
+                        <div className="py-2">
+                          {userProfile?.user.website ? (
+                            <a 
+                              href={userProfile.user.website} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-700"
+                            >
+                              {userProfile.user.website}
                             </a>
                           ) : (
-                            'Not specified'
+                            <span className="text-gray-900">Not set</span>
                           )}
-                        </p>
+                        </div>
                       )}
                     </div>
 
-                    <div>
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Timezone
                       </label>
@@ -370,19 +418,12 @@ export default function ProfilePage() {
                           onChange={(e) => setEditData(prev => ({ ...prev, timezone: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
-                          <option value="UTC">UTC (Coordinated Universal Time)</option>
-                          <option value="America/New_York">Eastern Time (ET)</option>
-                          <option value="America/Chicago">Central Time (CT)</option>
-                          <option value="America/Denver">Mountain Time (MT)</option>
-                          <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                          <option value="Europe/London">London (GMT)</option>
-                          <option value="Europe/Paris">Central European Time</option>
-                          <option value="Asia/Tokyo">Japan Standard Time</option>
-                          <option value="Asia/Shanghai">China Standard Time</option>
-                          <option value="Australia/Sydney">Australian Eastern Time</option>
+                          {timezones.map(tz => (
+                            <option key={tz} value={tz}>{tz}</option>
+                          ))}
                         </select>
                       ) : (
-                        <p className="text-gray-900 py-2">{editData.timezone}</p>
+                        <p className="text-gray-900 py-2">{userProfile?.user.timezone || 'UTC'}</p>
                       )}
                     </div>
                   </div>
@@ -396,11 +437,23 @@ export default function ProfilePage() {
                         value={editData.bio}
                         onChange={(e) => setEditData(prev => ({ ...prev, bio: e.target.value }))}
                         rows={4}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        maxLength={500}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                         placeholder="Tell us about yourself..."
                       />
                     ) : (
-                      <p className="text-gray-900 py-2">{editData.bio || 'No bio provided'}</p>
+                      <div className="py-2">
+                        {userProfile?.user.bio ? (
+                          <p className="text-gray-900 whitespace-pre-wrap">{userProfile.user.bio}</p>
+                        ) : (
+                          <p className="text-gray-500 italic">No bio added yet</p>
+                        )}
+                      </div>
+                    )}
+                    {isEditing && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {editData.bio.length}/500 characters
+                      </div>
                     )}
                   </div>
                 </div>
@@ -411,149 +464,172 @@ export default function ProfilePage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Account Stats */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Account Stats
-              </h3>
-              
-              <div className="space-y-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Account Overview</h3>
+              </div>
+              <div className="p-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Authentication Methods</span>
-                  <span className="font-semibold text-gray-900">
-                    {userProfile?.stats.totalAuthMethods || 0}
+                  <span className="text-sm text-gray-600">Registration Method</span>
+                  <span className="text-sm font-medium text-gray-900 capitalize">
+                    {userProfile?.user.registerSource}
                   </span>
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Linked Emails</span>
-                  <span className="font-semibold text-gray-900">
-                    {userProfile?.user.linkedEmails.length || 0}
+                  <span className="text-sm text-gray-600">Email Verified</span>
+                  <span className={`text-sm font-medium ${userProfile?.user.emailVerified ? 'text-green-600' : 'text-red-600'}`}>
+                    {userProfile?.user.emailVerified ? '✅ Yes' : '❌ No'}
                   </span>
                 </div>
-                
+
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Linked Phones</span>
-                  <span className="font-semibold text-gray-900">
-                    {userProfile?.user.linkedPhones.length || 0}
+                  <span className="text-sm text-gray-600">Phone Verified</span>
+                  <span className={`text-sm font-medium ${userProfile?.user.phoneVerified ? 'text-green-600' : 'text-red-600'}`}>
+                    {userProfile?.user.phoneVerified ? '✅ Yes' : '❌ No'}
                   </span>
                 </div>
-                
+
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Account Age</span>
-                  <span className="font-semibold text-gray-900">
-                    {getAccountAgeText(userProfile?.stats.accountAge || 0)}
+                  <span className="text-sm text-gray-600">Auth Methods</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {userProfile?.stats?.totalAuthMethods || 0}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Last Sign In</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {userProfile?.user.lastSignIn ? 
+                      new Date(userProfile.user.lastSignIn).toLocaleDateString() : 
+                      'Current session'
+                    }
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Available Auth Methods */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Sign-In Methods
-              </h3>
-              
-              <div className="space-y-3">
-                {userProfile?.authMethods.map((method, index) => (
-                  <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-xl">{getAuthMethodIcon(method)}</span>
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900 capitalize">{method}</div>
-                      <div className="text-xs text-gray-500">
-                        {method === 'credentials' && 'Email & Password'}
-                        {method === 'phone' && 'SMS Verification'}
-                        {method === 'google' && 'Google Account'}
-                        {method === 'github' && 'GitHub Account'}
-                      </div>
+            {/* Linked Accounts */}
+            {userProfile?.stats?.hasLinkedAccounts && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Linked Accounts</h3>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Group ID</span>
+                      <span className="text-sm font-mono text-gray-900">
+                        {userProfile?.groupInfo?.groupId?.slice(-8) || 'N/A'}
+                      </span>
                     </div>
-                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                      Active
-                    </span>
-                  </div>
-                ))}
-              </div>
-              
-              <Link
-                href="/account/security"
-                className="mt-4 block w-full text-center bg-blue-50 text-blue-600 hover:bg-blue-100 py-2 px-4 rounded-lg transition-colors text-sm font-medium"
-              >
-                Manage Methods →
-              </Link>
-            </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Role</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {userProfile?.groupInfo?.isMaster ? 'Primary' : 'Linked'}
+                      </span>
+                    </div>
 
-            {/* Account Group Info */}
-            {userProfile?.groupInfo && (
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border border-blue-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                  <span>🔗</span>
-                  <span>Linked Accounts</span>
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="text-sm">
-                    <span className="text-gray-600">Group ID:</span>
-                    <code className="ml-2 bg-white px-2 py-1 rounded text-xs">
-                      {userProfile.groupInfo.groupId}
-                    </code>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 text-center">
-                    <div className="bg-white rounded-lg p-3">
-                      <div className="text-xl font-bold text-blue-600">
-                        {userProfile.groupInfo.totalAccounts}
-                      </div>
-                      <div className="text-xs text-gray-600">Total</div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Total Accounts</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {userProfile?.groupInfo?.totalAccounts}
+                      </span>
                     </div>
-                    <div className="bg-white rounded-lg p-3">
-                      <div className="text-xl font-bold text-green-600">
-                        {userProfile.groupInfo.activeAccounts}
-                      </div>
-                      <div className="text-xs text-gray-600">Active</div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Active Accounts</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {userProfile?.groupInfo?.activeAccounts}
+                      </span>
                     </div>
                   </div>
-                  
-                  <div className="text-xs text-gray-600">
-                    {userProfile.groupInfo.isMaster ? (
-                      '👑 You are the primary account holder'
-                    ) : (
-                      '🔗 This account is linked to others'
-                    )}
-                  </div>
+
+                  <Link
+                    href="/account/security"
+                    className="mt-4 w-full bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium text-center block"
+                  >
+                    Manage Linked Accounts
+                  </Link>
                 </div>
               </div>
             )}
 
-            {/* Quick Actions */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Quick Actions
-              </h3>
-              
-              <div className="space-y-3">
+            {/* Authentication Methods */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Authentication</h3>
+              </div>
+              <div className="p-6">
+                <div className="space-y-3">
+                  {userProfile?.authMethods?.map((method, index) => (
+                    <div key={index} className="flex items-center space-x-3">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm text-gray-900 capitalize">{method}</span>
+                    </div>
+                  )) || (
+                    <div className="text-sm text-gray-500">No authentication methods found</div>
+                  )}
+                  
+                  {userProfile?.user.linkedEmails && userProfile.user.linkedEmails.length > 1 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs text-gray-500 mb-2">Linked Emails:</p>
+                      {userProfile.user.linkedEmails.map((email, index) => (
+                        <div key={index} className="text-xs text-gray-600 ml-2">
+                          • {email}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <Link
                   href="/account/security"
-                  className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="mt-4 w-full bg-gray-50 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium text-center block"
                 >
-                  <span>🔐</span>
-                  <span className="text-sm font-medium text-gray-900">Security Settings</span>
+                  Security Settings
                 </Link>
-                
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
+              </div>
+              <div className="p-6 space-y-3">
                 <Link
                   href="/account/settings"
-                  className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="w-full flex items-center space-x-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
                   <span>⚙️</span>
-                  <span className="text-sm font-medium text-gray-900">Account Settings</span>
+                  <div className="flex-1 text-left">
+                    <div className="text-sm font-medium text-gray-900">Account Settings</div>
+                    <div className="text-xs text-gray-500">Privacy, notifications, preferences</div>
+                  </div>
                 </Link>
-                
-                <button className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors w-full text-left">
-                  <span>📧</span>
-                  <span className="text-sm font-medium text-gray-900">Export Data</span>
-                </button>
-                
-                <button className="flex items-center space-x-3 p-3 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition-colors w-full text-left">
-                  <span>🗑️</span>
-                  <span className="text-sm font-medium text-red-700">Delete Account</span>
+
+                <Link
+                  href="/account/security"
+                  className="w-full flex items-center space-x-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                >
+                  <span>🔐</span>
+                  <div className="flex-1 text-left">
+                    <div className="text-sm font-medium text-gray-900">Security</div>
+                    <div className="text-xs text-gray-500">Password, 2FA, linked accounts</div>
+                  </div>
+                </Link>
+
+                <button
+                  onClick={() => handleFieldUpdate('lastActivity', new Date().toISOString())}
+                  className="w-full flex items-center space-x-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <span>🔄</span>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900">Refresh Profile</div>
+                    <div className="text-xs text-gray-500">Sync latest account data</div>
+                  </div>
                 </button>
               </div>
             </div>

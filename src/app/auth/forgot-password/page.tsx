@@ -49,7 +49,7 @@ export default function ForgotPassword() {
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Or{' '}
-            <Link href="/auth/signin" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link href="/auth/sign-in" className="font-medium text-blue-600 hover:text-blue-500">
               return to sign in
             </Link>
           </p>

@@ -147,7 +147,7 @@ export const enhancedAuthOptions: NextAuthOptions = {
     }),    
   ],
   pages: {
-    signIn: '/auth/signin',
+    signIn: '/auth/sign-in',
   },
   callbacks: {
     async signIn({ user, account, profile }) {

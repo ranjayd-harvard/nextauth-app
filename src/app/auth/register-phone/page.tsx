@@ -90,7 +90,7 @@ export default function RegisterPhone() {
       const data = await res.json()
 
       if (res.ok) {
-        router.push('/auth/signin?message=phone-verified')
+        router.push('/auth/sign-in?message=phone-verified')
       } else {
         setError(data.error || 'Verification failed')
       }
@@ -218,7 +218,7 @@ export default function RegisterPhone() {
               register with email
             </Link>
             {' or '}
-            <Link href="/auth/signin" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link href="/auth/sign-in" className="font-medium text-blue-600 hover:text-blue-500">
               sign in
             </Link>
           </p>

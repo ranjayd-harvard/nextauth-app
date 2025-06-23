@@ -58,7 +58,7 @@ export default function ResetPassword() {
         setSuccess(true)
         // Redirect to sign in after 3 seconds
         setTimeout(() => {
-          router.push('/auth/signin?message=password-reset')
+          router.push('/auth/sign-in?message=password-reset')
         }, 3000)
       } else {
         setError(data.error)
@@ -155,7 +155,7 @@ export default function ResetPassword() {
                 Redirecting to sign in page in 3 seconds...
               </p>
               <Link
-                href="/auth/signin"
+                href="/auth/sign-in"
                 className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
                 Go to Sign In
@@ -166,7 +166,7 @@ export default function ResetPassword() {
 
         <div className="text-center">
           <Link
-            href="/auth/signin"
+            href="/auth/sign-in"
             className="font-medium text-blue-600 hover:text-blue-500"
           >
             Back to sign in

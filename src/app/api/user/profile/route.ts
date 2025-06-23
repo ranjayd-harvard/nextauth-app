@@ -38,22 +38,9 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Ensure all required fields exist with defaults
-    const enrichedProfile = {
-      ...profile,
-      authMethods: profile.authMethods || [],
-      stats: {
-        accountAge: profile.stats?.accountAge || 0,
-        totalAuthMethods: profile.stats?.totalAuthMethods || 0,
-        hasLinkedAccounts: profile.stats?.hasLinkedAccounts || false,
-        ...profile.stats
-      },
-      groupInfo: profile.groupInfo || null
-    }
-
     return NextResponse.json({
       success: true,
-      profile: enrichedProfile
+      profile
     })
 
   } catch (error) {

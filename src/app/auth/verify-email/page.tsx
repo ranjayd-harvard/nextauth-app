@@ -30,7 +30,7 @@ export default function VerifyEmail() {
           setMessage(data.message)
           // Redirect to sign in after 3 seconds
           setTimeout(() => {
-            router.push('/auth/signin?message=email-verified')
+            router.push('/auth/sign-in?message=email-verified')
           }, 3000)
         } else {
           setStatus('error')
@@ -75,7 +75,7 @@ export default function VerifyEmail() {
                 Redirecting to sign in page in 3 seconds...
               </p>
               <Link
-                href="/auth/signin"
+                href="/auth/sign-in"
                 className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
                 Go to Sign In
@@ -100,7 +100,7 @@ export default function VerifyEmail() {
                   Register Again
                 </Link>
                 <Link
-                  href="/auth/signin"
+                  href="/auth/sign-in"
                   className="block w-full text-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 >
                   Back to Sign In

@@ -39,73 +39,93 @@ interface UserSettings {
 
 export default function AccountSettings() {
   const { data: session } = useSession()
-  const [settings, setSettings] = useState<UserSettings>({
-    notifications: {
-      email: true,
-      sms: false,
-      push: true,
-      security: true,
-      marketing: false,
-      weekly_summary: true
-    },
-    privacy: {
-      profile_visibility: 'private',
-      show_email: false,
-      show_phone: false,
-      analytics_tracking: true,
-      personalized_ads: false
-    },
-    preferences: {
-      language: 'en',
-      timezone: 'UTC',
-      date_format: 'MM/DD/YYYY',
-      theme: 'light',
-      email_frequency: 'daily'
-    },
-    security: {
-      two_factor_enabled: false,
-      login_notifications: true,
-      session_timeout: 30,
-      password_change_required: false
-    }
-  })
-  
-  const [isLoading, setIsLoading] = useState(false)
+  const [settings, setSettings] = useState<UserSettings | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchSettings()
+    }
+  }, [session])
+
+  const fetchSettings = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/user/settings')
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data.settings)
+      } else {
+        setError('Failed to load settings')
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error)
+      setError('Failed to load settings')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleSettingChange = (section: keyof UserSettings, key: string, value: any) => {
+    if (!settings) return
+    
     setSettings(prev => ({
-      ...prev,
+      ...prev!,
       [section]: {
-        ...prev[section],
+        ...prev![section],
         [key]: value
       }
     }))
   }
 
   const saveSettings = async () => {
-    setIsLoading(true)
+    if (!settings) return
+    
+    setIsSaving(true)
     setError('')
     setSuccess('')
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setSuccess('Settings saved successfully!')
-      
-      // Here you would make actual API call:
-      // const response = await fetch('/api/user/settings', {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(settings)
-      // })
+      const response = await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess('Settings saved successfully!')
+      } else {
+        setError(data.error || 'Failed to save settings')
+      }
     } catch (error) {
+      console.error('Error saving settings:', error)
       setError('Failed to save settings. Please try again.')
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
+    }
+  }
+
+  const updateSpecificSetting = async (section: keyof UserSettings, updates: any) => {
+    try {
+      const response = await fetch('/api/user/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section, updates })
+      })
+
+      if (response.ok) {
+        await fetchSettings() // Refresh settings
+      }
+    } catch (error) {
+      console.error('Error updating setting:', error)
     }
   }
 
@@ -115,7 +135,9 @@ export default function AccountSettings() {
       return
     }
 
-    setIsLoading(true)
+    setIsDeletingAccount(true)
+    setError('')
+
     try {
       const response = await fetch('/api/user/complete-profile', {
         method: 'DELETE',
@@ -126,17 +148,54 @@ export default function AccountSettings() {
         })
       })
 
+      const data = await response.json()
+
       if (response.ok) {
+        // Account deleted successfully, sign out
         await signOut({ callbackUrl: '/' })
       } else {
-        const data = await response.json()
         setError(data.error || 'Failed to delete account')
       }
     } catch (error) {
+      console.error('Error deleting account:', error)
       setError('An error occurred while deleting your account')
     } finally {
-      setIsLoading(false)
+      setIsDeletingAccount(false)
     }
+  }
+
+  const resetAllSettings = async () => {
+    if (confirm('Are you sure you want to reset all settings to default values?')) {
+      setIsSaving(true)
+      try {
+        // Delete current settings (API will return defaults)
+        await fetch('/api/user/settings', { method: 'DELETE' })
+        await fetchSettings()
+        setSuccess('Settings reset to default values')
+      } catch (error) {
+        setError('Failed to reset settings')
+      } finally {
+        setIsSaving(false)
+      }
+    }
+  }
+
+  if (isLoading || !settings) {
+    return (
+      <ProtectedRoute>
+        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="space-y-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-32 bg-gray-200 rounded"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </ProtectedRoute>
+    )
   }
 
   return (
@@ -193,134 +252,38 @@ export default function AccountSettings() {
           {/* Notifications Settings */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
                 <span>🔔</span>
                 <span>Notifications</span>
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Control how and when you receive notifications
+                Choose how you want to be notified about account activity
               </p>
             </div>
             
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+              <div className="space-y-4">
+                {Object.entries(settings.notifications).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between">
                     <div>
-                      <label className="text-sm font-medium text-gray-900">Email Notifications</label>
-                      <p className="text-xs text-gray-600">Receive notifications via email</p>
+                      <label className="text-sm font-medium text-gray-900 capitalize">
+                        {key.replace('_', ' ')} Notifications
+                      </label>
+                      <p className="text-xs text-gray-600">
+                        {getNotificationDescription(key)}
+                      </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.email}
-                        onChange={(e) => handleSettingChange('notifications', 'email', e.target.checked)}
-                        className="sr-only peer"
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={value}
+                        onChange={(e) => handleSettingChange('notifications', key, e.target.checked)}
                       />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-gray-900">SMS Notifications</label>
-                      <p className="text-xs text-gray-600">Receive important alerts via SMS</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.sms}
-                        onChange={(e) => handleSettingChange('notifications', 'sms', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-gray-900">Push Notifications</label>
-                      <p className="text-xs text-gray-600">Browser and mobile push notifications</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.push}
-                        onChange={(e) => handleSettingChange('notifications', 'push', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-gray-900">Security Alerts</label>
-                      <p className="text-xs text-gray-600">Login attempts and security events</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.security}
-                        onChange={(e) => handleSettingChange('notifications', 'security', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-gray-900">Marketing Emails</label>
-                      <p className="text-xs text-gray-600">Product updates and promotions</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.marketing}
-                        onChange={(e) => handleSettingChange('notifications', 'marketing', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-gray-900">Weekly Summary</label>
-                      <p className="text-xs text-gray-600">Account activity and insights</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.weekly_summary}
-                        onChange={(e) => handleSettingChange('notifications', 'weekly_summary', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Email Frequency
-                  </label>
-                  <select
-                    value={settings.preferences.email_frequency}
-                    onChange={(e) => handleSettingChange('preferences', 'email_frequency', e.target.value)}
-                    className="w-full md:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="immediate">Immediate</option>
-                    <option value="daily">Daily Digest</option>
-                    <option value="weekly">Weekly Summary</option>
-                    <option value="never">Never</option>
-                  </select>
-                </div>
+                ))}
               </div>
             </div>
           </div>
@@ -353,8 +316,8 @@ export default function AccountSettings() {
                         key={option.value}
                         className={`relative flex cursor-pointer rounded-lg border p-4 focus:outline-none ${
                           settings.privacy.profile_visibility === option.value
-                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                            : 'border-gray-300 bg-white hover:bg-gray-50'
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-300'
                         }`}
                       >
                         <input
@@ -365,87 +328,43 @@ export default function AccountSettings() {
                           onChange={(e) => handleSettingChange('privacy', 'profile_visibility', e.target.value)}
                           className="sr-only"
                         />
-                        <div className="flex flex-col">
-                          <span className="block text-sm font-medium text-gray-900">
-                            {option.label}
-                          </span>
-                          <span className="block text-xs text-gray-600 mt-1">
-                            {option.description}
-                          </span>
+                        <div className="flex w-full justify-between">
+                          <div className="flex flex-col">
+                            <span className="block text-sm font-medium text-gray-900">
+                              {option.label}
+                            </span>
+                            <span className="block text-sm text-gray-500">
+                              {option.description}
+                            </span>
+                          </div>
                         </div>
                       </label>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                <div className="space-y-4">
+                  {Object.entries(settings.privacy).filter(([key]) => key !== 'profile_visibility').map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between">
                       <div>
-                        <label className="text-sm font-medium text-gray-900">Show Email Address</label>
-                        <p className="text-xs text-gray-600">Make email visible on your profile</p>
+                        <label className="text-sm font-medium text-gray-900 capitalize">
+                          {key.replace('_', ' ')}
+                        </label>
+                        <p className="text-xs text-gray-600">
+                          {getPrivacyDescription(key)}
+                        </p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.privacy.show_email}
-                          onChange={(e) => handleSettingChange('privacy', 'show_email', e.target.checked)}
-                          className="sr-only peer"
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={value as boolean}
+                          onChange={(e) => handleSettingChange('privacy', key, e.target.checked)}
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                       </label>
                     </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-sm font-medium text-gray-900">Show Phone Number</label>
-                        <p className="text-xs text-gray-600">Make phone visible on your profile</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.privacy.show_phone}
-                          onChange={(e) => handleSettingChange('privacy', 'show_phone', e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-sm font-medium text-gray-900">Analytics Tracking</label>
-                        <p className="text-xs text-gray-600">Help improve our service with usage data</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.privacy.analytics_tracking}
-                          onChange={(e) => handleSettingChange('privacy', 'analytics_tracking', e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-sm font-medium text-gray-900">Personalized Ads</label>
-                        <p className="text-xs text-gray-600">Show ads based on your interests</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.privacy.personalized_ads}
-                          onChange={(e) => handleSettingChange('privacy', 'personalized_ads', e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                      </label>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -455,11 +374,11 @@ export default function AccountSettings() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
-                <span>🎨</span>
+                <span>🎛️</span>
                 <span>Preferences</span>
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Customize your experience and interface
+                Customize your experience and interface settings
               </p>
             </div>
             
@@ -478,8 +397,11 @@ export default function AccountSettings() {
                     <option value="es">Spanish</option>
                     <option value="fr">French</option>
                     <option value="de">German</option>
-                    <option value="zh">Chinese</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
                     <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="zh">Chinese</option>
                   </select>
                 </div>
 
@@ -492,14 +414,17 @@ export default function AccountSettings() {
                     onChange={(e) => handleSettingChange('preferences', 'timezone', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="UTC">UTC (Coordinated Universal Time)</option>
-                    <option value="America/New_York">Eastern Time (ET)</option>
-                    <option value="America/Chicago">Central Time (CT)</option>
-                    <option value="America/Denver">Mountain Time (MT)</option>
-                    <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                    <option value="Europe/London">London (GMT)</option>
-                    <option value="Europe/Paris">Central European Time</option>
-                    <option value="Asia/Tokyo">Japan Standard Time</option>
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">Eastern Time</option>
+                    <option value="America/Chicago">Central Time</option>
+                    <option value="America/Denver">Mountain Time</option>
+                    <option value="America/Los_Angeles">Pacific Time</option>
+                    <option value="Europe/London">London</option>
+                    <option value="Europe/Paris">Paris</option>
+                    <option value="Europe/Berlin">Berlin</option>
+                    <option value="Asia/Tokyo">Tokyo</option>
+                    <option value="Asia/Shanghai">Shanghai</option>
+                    <option value="Australia/Sydney">Sydney</option>
                   </select>
                 </div>
 
@@ -515,77 +440,71 @@ export default function AccountSettings() {
                     <option value="MM/DD/YYYY">MM/DD/YYYY (US)</option>
                     <option value="DD/MM/YYYY">DD/MM/YYYY (UK)</option>
                     <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
-                    <option value="DD MMM YYYY">DD MMM YYYY (Verbose)</option>
+                    <option value="DD.MM.YYYY">DD.MM.YYYY (EU)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-3">
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
                     Theme
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { value: 'light', label: 'Light', icon: '☀️' },
-                      { value: 'dark', label: 'Dark', icon: '🌙' },
-                      { value: 'auto', label: 'Auto', icon: '🔄' }
-                    ].map((theme) => (
-                      <label
-                        key={theme.value}
-                        className={`relative flex cursor-pointer rounded-lg border p-3 focus:outline-none ${
-                          settings.preferences.theme === theme.value
-                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                            : 'border-gray-300 bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="theme"
-                          value={theme.value}
-                          checked={settings.preferences.theme === theme.value}
-                          onChange={(e) => handleSettingChange('preferences', 'theme', e.target.value)}
-                          className="sr-only"
-                        />
-                        <div className="flex flex-col items-center text-center">
-                          <span className="text-lg mb-1">{theme.icon}</span>
-                          <span className="text-xs font-medium text-gray-900">
-                            {theme.label}
-                          </span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  <select
+                    value={settings.preferences.theme}
+                    onChange={(e) => handleSettingChange('preferences', 'theme', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">Auto (System)</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Email Frequency
+                  </label>
+                  <select
+                    value={settings.preferences.email_frequency}
+                    onChange={(e) => handleSettingChange('preferences', 'email_frequency', e.target.value)}
+                    className="w-full md:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="immediate">Immediate</option>
+                    <option value="daily">Daily Digest</option>
+                    <option value="weekly">Weekly Summary</option>
+                    <option value="never">Never</option>
+                  </select>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Advanced Security */}
+          {/* Security Settings */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
-                <span>🛡️</span>
-                <span>Advanced Security</span>
+                <span>🔐</span>
+                <span>Security</span>
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Additional security settings and session management
+                Manage your account security and authentication settings
               </p>
             </div>
             
             <div className="p-6">
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
                     <label className="text-sm font-medium text-gray-900">Login Notifications</label>
-                    <p className="text-xs text-gray-600">Get notified of new sign-ins to your account</p>
+                    <p className="text-xs text-gray-600">Get notified when someone signs into your account</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
                       checked={settings.security.login_notifications}
                       onChange={(e) => handleSettingChange('security', 'login_notifications', e.target.checked)}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
 
@@ -622,55 +541,22 @@ export default function AccountSettings() {
                     {settings.security.two_factor_enabled ? 'Manage 2FA' : 'Enable 2FA'}
                   </Link>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Data & Export */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
-                <span>📊</span>
-                <span>Data & Export</span>
-              </h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage your data and account information
-              </p>
-            </div>
-            
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button className="flex items-center justify-center space-x-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                  <span className="text-2xl">📥</span>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">Export Account Data</div>
-                    <div className="text-sm text-gray-600">Download all your account information</div>
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <label className="text-sm font-medium text-gray-900">Password Change Required</label>
+                    <p className="text-xs text-gray-600">Force password change on next login</p>
                   </div>
-                </button>
-
-                <button className="flex items-center justify-center space-x-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                  <span className="text-2xl">📋</span>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">Activity Log</div>
-                    <div className="text-sm text-gray-600">View your account activity history</div>
-                  </div>
-                </button>
-
-                <button className="flex items-center justify-center space-x-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                  <span className="text-2xl">🔗</span>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">Connected Apps</div>
-                    <div className="text-sm text-gray-600">Manage third-party integrations</div>
-                  </div>
-                </button>
-
-                <button className="flex items-center justify-center space-x-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                  <span className="text-2xl">🗄️</span>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">Data Usage</div>
-                    <div className="text-sm text-gray-600">See how your data is being used</div>
-                  </div>
-                </button>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={settings.security.password_change_required}
+                      onChange={(e) => handleSettingChange('security', 'password_change_required', e.target.checked)}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -711,7 +597,10 @@ export default function AccountSettings() {
                       Reset all preferences to default values
                     </p>
                   </div>
-                  <button className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium">
+                  <button 
+                    onClick={resetAllSettings}
+                    className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium"
+                  >
                     Reset Settings
                   </button>
                 </div>
@@ -729,10 +618,10 @@ export default function AccountSettings() {
             </button>
             <button
               onClick={saveSettings}
-              disabled={isLoading}
+              disabled={isSaving}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
             >
-              {isLoading ? (
+              {isSaving ? (
                 <div className="flex items-center space-x-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   <span>Saving...</span>
@@ -800,16 +689,16 @@ export default function AccountSettings() {
                     setError('')
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  disabled={isLoading}
+                  disabled={isDeletingAccount}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAccountDeletion}
-                  disabled={deleteConfirmText !== 'DELETE' || isLoading}
+                  disabled={deleteConfirmText !== 'DELETE' || isDeletingAccount}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isLoading ? (
+                  {isDeletingAccount ? (
                     <div className="flex items-center space-x-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       <span>Deleting...</span>
@@ -825,4 +714,27 @@ export default function AccountSettings() {
       </div>
     </ProtectedRoute>
   )
+}
+
+// Helper functions for descriptions
+function getNotificationDescription(key: string): string {
+  const descriptions = {
+    email: 'Receive notifications via email',
+    sms: 'Receive notifications via SMS',
+    push: 'Receive push notifications in browser',
+    security: 'Security alerts and login notifications',
+    marketing: 'Product updates and promotional content',
+    weekly_summary: 'Weekly summary of account activity'
+  }
+  return descriptions[key] || 'Notification setting'
+}
+
+function getPrivacyDescription(key: string): string {
+  const descriptions = {
+    show_email: 'Display email address on public profile',
+    show_phone: 'Display phone number on public profile',
+    analytics_tracking: 'Allow usage analytics and tracking',
+    personalized_ads: 'Show personalized advertisements'
+  }
+  return descriptions[key] || 'Privacy setting'
 }

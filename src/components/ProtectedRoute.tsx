@@ -12,7 +12,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     if (status === 'loading') return
 
     if (!session) {
-      router.push('/auth/signin')
+      router.push('/auth/sign-in')
     }
   }, [session, status, router])
 
