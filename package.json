@@ -19,8 +19,10 @@
     "next": "15.3.3",
     "next-auth": "^4.24.11",
     "nodemailer": "^6.10.1",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "speakeasy": "^2.0.0",
     "twilio": "^5.7.1",
     "uuid": "^11.1.0"
   },
