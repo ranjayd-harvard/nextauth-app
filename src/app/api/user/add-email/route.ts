@@ -6,6 +6,7 @@ import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 import { sendEmail, emailTemplates } from '@/lib/email'
 import { TokenManager } from '@/lib/tokens'
+import { ActivityTracker } from '@/lib/activity-tracker'
 
 // POST method to add email to existing user
 export async function POST(req: NextRequest) {
@@ -108,6 +109,18 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       )
     }
+
+    // 🆕 TRACK ACTIVITY - Add this after successful email addition
+    await ActivityTracker.track(
+      session.user.id,
+      'security_email_added',
+      `Added email address ${email.toLowerCase()}`,
+      { 
+        email: email.toLowerCase(),
+        requiresVerification: true 
+      },
+      req
+    )
 
     console.log('📧 Email added successfully, sending verification...')
 

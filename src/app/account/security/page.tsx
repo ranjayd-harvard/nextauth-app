@@ -7,6 +7,7 @@ import { signIn, getProviders } from 'next-auth/react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AccountLinkingModal from '@/components/AccountLinkingModal'
 import { useAccountLinking } from '@/hooks/useAccountLinking'
+import { useUserActivities, getActivityIcon, getSeverityColor, formatTimeAgo } from '@/hooks/useUserActivities'
 
 interface AuthMethod {
   id: string
@@ -626,6 +627,13 @@ export default function SecurityPage() {
     findCandidates
   } = useAccountLinking()
 
+  const {
+    activities,
+    summary,
+    isLoading: isActivitiesLoading,
+    refreshActivities
+  } = useUserActivities()
+
   // Generate auth methods based on current user profile
   const getAuthMethods = (): AuthMethod[] => {
     if (!userProfile?.user) return []
@@ -962,6 +970,7 @@ export default function SecurityPage() {
   const handleModalSuccess = (message: string) => {
     setSuccess(message)
     fetchUserProfile() // Refresh the profile data
+    refreshActivities() // Refresh activities to show the new event
   }
 
   const handleModalError = (errorMessage: string) => {
@@ -1157,37 +1166,80 @@ export default function SecurityPage() {
 
             {/* Recent Activity */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-              
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                    <span className="text-gray-900">Signed in via email</span>
-                  </div>
-                  <span className="text-gray-500">2 min ago</span>
-                </div>
-                
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                    <span className="text-gray-900">Profile updated</span>
-                  </div>
-                  <span className="text-gray-500">1 hour ago</span>
-                </div>
-                
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                    <span className="text-gray-900">Phone verified</span>
-                  </div>
-                  <span className="text-gray-500">Yesterday</span>
-                </div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                <button
+                  onClick={refreshActivities}
+                  disabled={isActivitiesLoading}
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium disabled:opacity-50"
+                >
+                  {isActivitiesLoading ? 'Loading...' : 'Refresh'}
+                </button>
               </div>
               
-              <button className="mt-4 text-blue-600 hover:text-blue-700 text-sm font-medium">
-                View all activity →
-              </button>
+              {isActivitiesLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="animate-pulse">
+                      <div className="flex items-center space-x-3 py-2">
+                        <div className="w-6 h-6 bg-gray-200 rounded-full"></div>
+                        <div className="flex-1">
+                          <div className="h-4 bg-gray-200 rounded w-3/4 mb-1"></div>
+                          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                        </div>
+                        <div className="h-3 bg-gray-200 rounded w-16"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : activities.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-gray-400 text-4xl mb-4">📋</div>
+                  <p className="text-gray-600">No recent activity</p>
+                </div>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  {activities.slice(0, 10).map((activity) => (
+                    <div key={activity.id} className="flex items-center justify-between py-2 hover:bg-gray-50 rounded-lg px-2 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-lg">{getActivityIcon(activity.type)}</span>
+                          <div className={`w-2 h-2 rounded-full ${getSeverityColor(activity.severity).includes('text-red') ? 'bg-red-500' : 
+                            getSeverityColor(activity.severity).includes('text-orange') ? 'bg-orange-500' :
+                            getSeverityColor(activity.severity).includes('text-blue') ? 'bg-blue-500' : 'bg-gray-500'}`}></div>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{activity.action}</div>
+                          <div className="text-xs text-gray-500 flex items-center space-x-2">
+                            <span>{activity.device}</span>
+                            {activity.ip && (
+                              <>
+                                <span>•</span>
+                                <span>{activity.ip}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-gray-500">{formatTimeAgo(activity.timestamp)}</div>
+                        <div className={`text-xs px-2 py-1 rounded-full ${getSeverityColor(activity.severity)}`}>
+                          {activity.severity}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button 
+                  onClick={() => router.push('/account/activity')}
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  View all activity →
+                </button>
+              </div>
             </div>
           </div>
 
