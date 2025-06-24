@@ -294,8 +294,9 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Track successful sign-in for all providers
-        if (user.id && account) {
-          await ActivityTracker.trackSignIn(user.id, account.provider)
+        if (user.id) {
+          // Track the sign-in event
+          await ActivityTracker.trackSignIn(user.id, account?.provider || 'credentials')
         }
         
         return true

@@ -11,6 +11,7 @@ export class EnhancedAuthIntegration {
     password?: string
     registerSource: string
     image?: string
+    provider?: string
     [key: string]: any
   }) {
     const client = await clientPromise
@@ -24,18 +25,40 @@ export class EnhancedAuthIntegration {
         userData.name
       )
 
-      // Create the new user first
+      // Create the new user with ALL required fields
       const newUser = {
         ...userData,
         createdAt: new Date(),
         updatedAt: new Date(),
         accountStatus: 'active',
+        
+        // Verification status
         emailVerified: userData.registerSource === 'oauth' ? true : false,
         phoneVerified: userData.registerSource === 'phone' ? false : userData.phoneVerified || false,
+        
+        // Linked accounts arrays
         linkedEmails: userData.email ? [userData.email] : [],
         linkedPhones: userData.phoneNumber ? [userData.phoneNumber] : [],
-        linkedProviders: userData.registerSource === 'oauth' ? [userData.provider] : []
+        linkedProviders: userData.registerSource === 'oauth' && userData.provider ? [userData.provider] : [],
+        
+        // Verified arrays (NEW - for account status)
+        verifiedEmails: userData.registerSource === 'oauth' && userData.email ? [userData.email] : [],
+        verifiedPhones: [], // Will be populated when phone is verified
+        
+        // Two-factor authentication (NEW - for account status)
+        twoFactorEnabled: false,
+        backupCodes: [],
+        
+        // Security and activity tracking (NEW - for account status)
+        securityLog: [{
+          event: 'account_created',
+          timestamp: new Date(),
+          ip: 'unknown', // Will be populated by the calling function if available
+          userAgent: 'unknown',
+          registerSource: userData.registerSource
+        }]
       }
+
 
       const result = await users.insertOne(newUser)
       const newUserId = result.insertedId.toString()
@@ -170,6 +193,28 @@ export class EnhancedAuthIntegration {
       console.error('Error getting complete user profile:', error)
       return null
     }
+  }
+
+  // Helper method to add security log entry with request data
+  static async addSecurityLogEntry(userId: string, event: string, details: any = {}, request?: Request) {
+    const client = await clientPromise
+    const users = client.db().collection('users')
+    
+    const logEntry = {
+      event,
+      timestamp: new Date(),
+      ip: request?.headers.get('x-forwarded-for') || request?.headers.get('x-real-ip') || 'unknown',
+      userAgent: request?.headers.get('user-agent') || 'unknown',
+      ...details
+    }
+    
+    await users.updateOne(
+      { _id: new ObjectId(userId) },
+      { 
+        $push: { securityLog: logEntry },
+        $set: { updatedAt: new Date() }
+      }
+    )
   }
 
   // Extract available authentication methods for a user

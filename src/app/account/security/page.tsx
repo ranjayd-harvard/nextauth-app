@@ -8,6 +8,8 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import AccountLinkingModal from '@/components/AccountLinkingModal'
 import { useAccountLinking } from '@/hooks/useAccountLinking'
 import { useUserActivities, getActivityIcon, getSeverityColor, formatTimeAgo } from '@/hooks/useUserActivities'
+import { useAccountStatus, getSecurityScoreColor, getSecurityScoreLabel, getSocialAccountIcon } from '@/hooks/useAccountStatus'
+import AccountStatusSidebar from '@/components/AccountStatusSidebar'
 
 interface AuthMethod {
   id: string
@@ -617,6 +619,9 @@ export default function SecurityPage() {
   const [showAddPhoneModal, setShowAddPhoneModal] = useState(false)
   const [showAddSocialModal, setShowAddSocialModal] = useState(false)
 
+  // Account status hook
+  const { status: accountStatus, refreshStatus } = useAccountStatus()  
+
   const {
     candidates,
     isLoading: isLinkingLoading,
@@ -783,6 +788,7 @@ export default function SecurityPage() {
         const data = await response.json()
         setUserProfile(data.profile)
         console.log('User profile loaded:', data.profile) // Debug log
+        refreshStatus()
       }
     } catch (error) {
       console.error('Failed to fetch user profile:', error)
@@ -1245,34 +1251,10 @@ export default function SecurityPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Account Status */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Status</h3>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Email Verified</span>
-                  <span className="text-green-600">✓</span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Phone Verified</span>
-                  <span className={userProfile?.user?.phoneVerified ? "text-green-600" : "text-gray-400"}>
-                    {userProfile?.user?.phoneVerified ? "✓" : "—"}
-                  </span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Social Accounts</span>
-                  <span className="text-gray-400">—</span>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Two-Factor Auth</span>
-                  <span className="text-gray-400">—</span>
-                </div>
-              </div>
-            </div>
+
+            {/* Enhanced Account Status */}
+            <AccountStatusSidebar onRefresh={fetchUserProfile} />
+
 
             {/* Linked Accounts Summary */}
             {userProfile?.user?.hasLinkedAccounts && (

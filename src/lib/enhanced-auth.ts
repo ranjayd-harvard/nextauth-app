@@ -10,6 +10,7 @@ import { TokenManager } from './tokens'
 import { verifyCode } from './sms'
 import { EnhancedAccountLinkingService } from './enhanced-account-linking'
 import { EnhancedAuthIntegration } from './enhanced-auth-integration'
+import { ActivityTracker } from './activity-tracker'
 
 export const enhancedAuthOptions: NextAuthOptions = {
   adapter: MongoDBAdapter(clientPromise),
@@ -343,11 +344,34 @@ export const enhancedAuthOptions: NextAuthOptions = {
       }
     },
     async signIn({ user, account, profile, isNewUser }) {
-      // Update user activity on every sign-in
-      if (user.id) {
-        await EnhancedAuthIntegration.updateUserActivity(user.id)
+      try {
+        // Update user activity on every sign-in
+        if (user.id) {
+          await EnhancedAuthIntegration.updateUserActivity(user.id)
+          
+          // Track the sign-in activity
+          const method = account?.provider || 'credentials'
+          await ActivityTracker.trackSignIn(user.id, method)
+          
+          console.log(`🔓 Sign-in tracked for user ${user.id} via ${method}`)
+        }
+        return true
+      } catch (error) {
+        console.error('❌ SignIn callback error:', error)
+        return true // Don't block sign-in if tracking fails
       }
-    }
+    },
+    async signOut({ session, token }) {
+      try {
+        const userId = session?.user?.id || token?.id as string
+        if (userId) {
+          await ActivityTracker.trackSignOut(userId)
+          console.log(`🔒 Sign-out tracked for user ${userId}`)
+        }
+      } catch (error) {
+        console.error('❌ SignOut event error:', error)
+      }
+    },    
   },
   session: {
     strategy: 'jwt',
