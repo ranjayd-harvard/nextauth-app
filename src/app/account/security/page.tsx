@@ -23,14 +23,25 @@ interface UserProfile {
     name: string
     email: string
     phoneNumber?: string
-    linkedEmails?: string[]
+    linkedEmails: string[]
+    linkedPhones: string[]
+    linkedProviders: string[]
+    emailVerified: boolean
+    phoneVerified: boolean
     verifiedEmails?: string[]
-    linkedPhones?: string[]
     verifiedPhones?: string[]
-    phoneVerified?: boolean
     image?: string
     hasLinkedAccounts?: boolean
     linkedAccountsCount?: number
+    groupId?: string
+  }
+  authMethods: string[]
+  linkedAccounts: any[]
+  groupInfo?: {
+    groupId: string
+    isMaster: boolean
+    totalAccounts: number
+    activeAccounts: number
   }
 }
 
@@ -50,10 +61,12 @@ function AddEmailModal({
 }) {
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [localError, setLocalError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setLocalError('')
     
     try {
       // Check if email is already linked (verified or unverified)
@@ -65,7 +78,7 @@ function AddEmailModal({
                           userProfile?.user.email === email.toLowerCase()
         
         if (isVerified) {
-          onError('This email is already verified and linked to your account')
+          setLocalError('This email is already verified and linked to your account')
           setIsLoading(false)
           return
         } else {
@@ -83,8 +96,9 @@ function AddEmailModal({
               onSuccess('Verification email resent successfully!')
               onClose()
               setEmail('')
+              setLocalError('')
             } else {
-              onError(resendData.error || 'Failed to resend verification email')
+              setLocalError(resendData.error || 'Failed to resend verification email')
             }
           }
           setIsLoading(false)
@@ -104,11 +118,23 @@ function AddEmailModal({
         onSuccess(data.message || 'Email added successfully! Please check your inbox for verification.')
         onClose()
         setEmail('')
+        setLocalError('')
       } else {
-        onError(data.error || 'Failed to add email')
+        // Handle specific error cases
+        if (response.status === 409) {
+          // Email already exists - show helpful error message
+          if (data.suggestLinking) {
+            setLocalError(`${data.error} Would you like to link accounts instead? Please use the "Find Accounts" feature.`)
+          } else {
+            setLocalError(data.error || 'This email address is already registered with another account.')
+          }
+        } else {
+          setLocalError(data.error || 'Failed to add email')
+        }
       }
     } catch (error) {
-      onError('Failed to add email. Please try again.')
+      console.error('Add email error:', error)
+      setLocalError('Failed to add email. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -128,6 +154,18 @@ function AddEmailModal({
             ×
           </button>
         </div>
+        
+        {/* Error Display */}
+        {localError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex">
+              <span className="text-red-400">⚠️</span>
+              <div className="ml-2">
+                <p className="text-sm text-red-800">{localError}</p>
+              </div>
+            </div>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -186,10 +224,12 @@ function AddPhoneModal({
   const [verificationCode, setVerificationCode] = useState('')
   const [step, setStep] = useState<'phone' | 'verify'>('phone')
   const [isLoading, setIsLoading] = useState(false)
+  const [localError, setLocalError] = useState('')
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setLocalError('')
     
     try {
       const response = await fetch('/api/user/add-phone', {
@@ -202,12 +242,23 @@ function AddPhoneModal({
 
       if (response.ok) {
         setStep('verify')
-        onError('') // Clear any previous errors
+        setLocalError('') // Clear any previous errors
       } else {
-        onError(data.error || 'Failed to add phone number')
+        // Handle specific error cases
+        if (response.status === 409) {
+          // Phone number already exists - show helpful error message
+          if (data.suggestLinking) {
+            setLocalError(`${data.error} Would you like to link accounts instead? Please use the "Find Accounts" feature.`)
+          } else {
+            setLocalError(data.error || 'This phone number is already registered with another account.')
+          }
+        } else {
+          setLocalError(data.error || 'Failed to add phone number')
+        }
       }
     } catch (error) {
-      onError('Failed to add phone number. Please try again.')
+      console.error('Add phone error:', error)
+      setLocalError('Failed to add phone number. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -216,6 +267,7 @@ function AddPhoneModal({
   const handleVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setLocalError('')
     
     try {
       const response = await fetch('/api/user/verify-phone', {
@@ -235,11 +287,12 @@ function AddPhoneModal({
         setPhoneNumber('')
         setVerificationCode('')
         setStep('phone')
+        setLocalError('')
       } else {
-        onError(data.error || 'Failed to verify phone number')
+        setLocalError(data.error || 'Failed to verify phone number')
       }
     } catch (error) {
-      onError('Failed to verify phone number. Please try again.')
+      setLocalError('Failed to verify phone number. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -249,7 +302,7 @@ function AddPhoneModal({
     setPhoneNumber('')
     setVerificationCode('')
     setStep('phone')
-    onError('')
+    setLocalError('')
   }
 
   if (!isOpen) return null
@@ -271,6 +324,18 @@ function AddPhoneModal({
             ×
           </button>
         </div>
+        
+        {/* Error Display */}
+        {localError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex">
+              <span className="text-red-400">⚠️</span>
+              <div className="ml-2">
+                <p className="text-sm text-red-800">{localError}</p>
+              </div>
+            </div>
+          </div>
+        )}
         
         {step === 'phone' ? (
           <form onSubmit={handlePhoneSubmit} className="space-y-4">
@@ -397,6 +462,7 @@ function AddSocialModal({
 }) {
   const [providers, setProviders] = useState<any>({})
   const [isLoading, setIsLoading] = useState(false)
+  const [localError, setLocalError] = useState('')
 
   useEffect(() => {
     if (isOpen) {
@@ -426,7 +492,7 @@ function AddSocialModal({
 
   const handleSocialConnect = async (providerId: string) => {
     setIsLoading(true)
-    onError('')
+    setLocalError('')
 
     try {
       const result = await signIn(providerId, { 
@@ -435,13 +501,27 @@ function AddSocialModal({
       })
 
       if (result?.error) {
-        onError('Failed to connect social account. Please try again.')
+        // Handle specific OAuth errors
+        if (result.error.includes('OAuthAccountNotLinked')) {
+          setLocalError('This social account is already linked to another user account. Would you like to link accounts instead? Please use the "Find Accounts" feature.')
+        } else if (result.error.includes('OAuthCallbackError')) {
+          setLocalError('Failed to connect to the social provider. Please try again.')
+        } else if (result.error.includes('AccessDenied')) {
+          setLocalError('Access was denied. Please grant permission to link your account.')
+        } else {
+          setLocalError(`Failed to connect social account: ${result.error}`)
+        }
       } else if (result?.ok) {
         onSuccess('Social account connected successfully!')
         onClose()
+        setLocalError('')
+        // The page will redirect via callbackUrl
+      } else {
+        setLocalError('Failed to connect social account. Please try again.')
       }
     } catch (error) {
-      onError('Failed to connect social account. Please try again.')
+      console.error('Social connect error:', error)
+      setLocalError('Failed to connect social account. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -465,6 +545,18 @@ function AddSocialModal({
             ×
           </button>
         </div>
+        
+        {/* Error Display */}
+        {localError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex">
+              <span className="text-red-400">⚠️</span>
+              <div className="ml-2">
+                <p className="text-sm text-red-800">{localError}</p>
+              </div>
+            </div>
+          </div>
+        )}
         
         <div className="space-y-3">
           <p className="text-sm text-gray-600 text-center mb-4">
@@ -531,7 +623,7 @@ export default function SecurityPage() {
     showLinkingModal,
     linkAccounts,
     setShowLinkingModal,
-    findAccountsToLink
+    findCandidates
   } = useAccountLinking()
 
   // Generate auth methods based on current user profile
@@ -543,17 +635,17 @@ export default function SecurityPage() {
     // Always include primary email if available
     if (userProfile.user.email) {
       methods.push({
-        id: '1',
+        id: 'primary-email',
         type: 'email',
         value: userProfile.user.email,
-        verified: true, // Primary email is always verified
+        verified: userProfile.user.emailVerified || false,
         primary: true,
         lastUsed: '2 min ago'
       })
     }
     
     // Include linked emails with their verification status
-    if (userProfile.user.linkedEmails) {
+    if (userProfile.user.linkedEmails && userProfile.user.linkedEmails.length > 0) {
       userProfile.user.linkedEmails.forEach((email, index) => {
         // Skip if it's the primary email (already included above)
         if (email === userProfile.user.email) return
@@ -571,10 +663,10 @@ export default function SecurityPage() {
       })
     }
     
-    // Include phone if available
+    // Include primary phone if available
     if (userProfile.user.phoneNumber) {
       methods.push({
-        id: '2',
+        id: 'primary-phone',
         type: 'phone',
         value: userProfile.user.phoneNumber,
         verified: userProfile.user.phoneVerified || false,
@@ -583,6 +675,40 @@ export default function SecurityPage() {
       })
     }
     
+    // Include linked phones with their verification status  
+    if (userProfile.user.linkedPhones && userProfile.user.linkedPhones.length > 0) {
+      userProfile.user.linkedPhones.forEach((phone, index) => {
+        // Skip if it's the primary phone (already included above)
+        if (phone === userProfile.user.phoneNumber) return
+        
+        const isVerified = userProfile.user.verifiedPhones?.includes(phone) || false
+        
+        methods.push({
+          id: `linked-phone-${index}`,
+          type: 'phone',
+          value: phone,
+          verified: isVerified,
+          primary: false,
+          lastUsed: isVerified ? 'Recently' : 'Pending verification'
+        })
+      })
+    }
+    
+    // Include OAuth providers
+    if (userProfile.user.linkedProviders && userProfile.user.linkedProviders.length > 0) {
+      userProfile.user.linkedProviders.forEach((provider, index) => {
+        methods.push({
+          id: `oauth-${provider}-${index}`,
+          type: 'oauth',
+          value: provider.charAt(0).toUpperCase() + provider.slice(1),
+          verified: true, // OAuth is always considered verified
+          primary: false,
+          lastUsed: 'Recently'
+        })
+      })
+    }
+    
+    console.log('Generated auth methods:', methods) // Debug log
     return methods
   }
 
@@ -636,12 +762,19 @@ export default function SecurityPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (userProfile) {
+      console.log('User profile changed, updating auth methods:', userProfile)
+    }
+  }, [userProfile])
+
   const fetchUserProfile = async () => {
     try {
-      const response = await fetch('/api/user/profile')
+      const response = await fetch('/api/user/complete-profile')
       if (response.ok) {
         const data = await response.json()
-        setUserProfile(data)
+        setUserProfile(data.profile)
+        console.log('User profile loaded:', data.profile) // Debug log
       }
     } catch (error) {
       console.error('Failed to fetch user profile:', error)
@@ -653,7 +786,7 @@ export default function SecurityPage() {
   const handleFindAccounts = async () => {
     if (!userProfile?.user) return
     
-    await findAccountsToLink(
+    await findCandidates(
       userProfile.user.email,
       userProfile.user.phoneNumber,
       userProfile.user.name
@@ -686,8 +819,85 @@ export default function SecurityPage() {
   }
 
   const handleRemoveMethod = async (methodId: string) => {
-    // Implementation would call API to remove method
-    console.log(`Remove method ${methodId}`)
+    // Parse the method ID to determine what type of method to remove
+    const authMethod = authMethods.find(method => method.id === methodId)
+    
+    if (!authMethod) {
+      setError('Authentication method not found')
+      return
+    }
+
+    // Prevent removing the last authentication method
+    const verifiedMethods = authMethods.filter(method => method.verified)
+    if (verifiedMethods.length <= 1) {
+      setError('Cannot remove the last verified authentication method. Please add another method first.')
+      return
+    }
+
+    // Prevent removing primary email or phone
+    if (authMethod.primary && (authMethod.type === 'email' || authMethod.type === 'phone')) {
+      setError('Cannot remove primary authentication method. Please set another method as primary first.')
+      return
+    }
+
+    // Confirm removal
+    const confirmMessage = `Are you sure you want to remove ${authMethod.type === 'oauth' ? authMethod.value + ' account' : authMethod.value}?`
+    if (!confirm(confirmMessage)) {
+      return
+    }
+
+    try {
+      let response
+      
+      switch (authMethod.type) {
+        case 'email':
+          response = await fetch('/api/user/remove-email', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              email: authMethod.value,
+              isPrimary: authMethod.primary 
+            })
+          })
+          break
+
+        case 'phone':
+          response = await fetch('/api/user/remove-phone', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              phoneNumber: authMethod.value,
+              isPrimary: authMethod.primary 
+            })
+          })
+          break
+
+        case 'oauth':
+          response = await fetch('/api/user/remove-oauth', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              provider: authMethod.value.toLowerCase()
+            })
+          })
+          break
+
+        default:
+          setError('Unsupported authentication method type')
+          return
+      }
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess(data.message || `${authMethod.type === 'oauth' ? authMethod.value + ' account' : authMethod.value} removed successfully`)
+        await fetchUserProfile() // Refresh the profile
+      } else {
+        setError(data.error || 'Failed to remove authentication method')
+      }
+    } catch (error) {
+      setError('Failed to remove authentication method. Please try again.')
+    }
   }
 
   const handleResendVerification = async (email: string, type: 'email' | 'phone') => {
@@ -995,8 +1205,8 @@ export default function SecurityPage() {
                 
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">Phone Verified</span>
-                  <span className={userProfile?.user?.phoneNumber ? "text-green-600" : "text-gray-400"}>
-                    {userProfile?.user?.phoneNumber ? "✓" : "—"}
+                  <span className={userProfile?.user?.phoneVerified ? "text-green-600" : "text-gray-400"}>
+                    {userProfile?.user?.phoneVerified ? "✓" : "—"}
                   </span>
                 </div>
                 
