@@ -119,4 +119,28 @@ export const emailTemplates = {
       </div>
     `,
   }),
+  // ADD THIS NEW TEMPLATE
+  linkedEmailVerification: (name: string, email: string, verificationUrl: string) => ({
+    subject: 'Verify your linked email address',
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="color: #333; text-align: center;">Verify Linked Email</h2>
+        <p>Hi ${name},</p>
+        <p>You've added a new email address (${email}) to your MyApp account. Please verify this email address to complete the linking process.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verificationUrl}" 
+              style="background-color: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Verify Linked Email
+          </a>
+        </div>
+        <p>If the button doesn't work, copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #666;">${verificationUrl}</p>
+        <p>This verification link will expire in 24 hours.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #666; font-size: 12px;">
+          If you didn't add this email to your account, someone may be trying to use your account. Please contact support immediately.
+        </p>
+      </div>
+    `,
+  }),
 }
