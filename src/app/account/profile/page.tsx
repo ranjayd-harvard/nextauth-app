@@ -205,7 +205,7 @@ export default function ProfilePage() {
               href="/account/settings"
               className="text-blue-600 hover:text-blue-700 text-sm font-medium"
             >
-              ⚙️ Account Settings
+              ⚙️ Preferences
             </Link>
             <Link
               href="/account/security"

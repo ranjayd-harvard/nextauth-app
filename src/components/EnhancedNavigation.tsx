@@ -169,8 +169,8 @@ export default function EnhancedNavigation() {
                         >
                           <span className="w-5 text-center mr-3">🔐</span>
                           <div>
-                            <div className="font-medium">Sign-In Methods</div>
-                            <div className="text-xs text-gray-500">Link accounts & security</div>
+                            <div className="font-medium">Security</div>
+                            <div className="text-xs text-gray-500">Add accounts & security</div>
                           </div>
                           {session.user?.hasLinkedAccounts && (
                             <span className="ml-auto text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
@@ -186,28 +186,12 @@ export default function EnhancedNavigation() {
                         >
                           <span className="w-5 text-center mr-3">⚙️</span>
                           <div>
-                            <div className="font-medium">Settings</div>
-                            <div className="text-xs text-gray-500">Preferences & privacy</div>
+                            <div className="font-medium">Preferences</div>
+                            <div className="text-xs text-gray-500">Settings & privacy</div>
                           </div>
                         </Link>
                       </div>
 
-                      {/* Quick Actions */}
-                      {!session.user?.hasLinkedAccounts && (
-                        <div className="border-t border-gray-100 py-2">
-                          <Link 
-                            href="/account/security" 
-                            className="flex items-center px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
-                            onClick={() => setShowUserMenu(false)}
-                          >
-                            <span className="w-5 text-center mr-3">🔗</span>
-                            <div>
-                              <div className="font-medium">Link More Accounts</div>
-                              <div className="text-xs text-blue-500">Add phone, email, or social sign-in</div>
-                            </div>
-                          </Link>
-                        </div>
-                      )}
 
                       {/* Sign Out */}
                       <div className="border-t border-gray-100 py-1">

@@ -10,6 +10,8 @@ import { useAccountLinking } from '@/hooks/useAccountLinking'
 import { useUserActivities, getActivityIcon, getSeverityColor, formatTimeAgo } from '@/hooks/useUserActivities'
 import { useAccountStatus, getSecurityScoreColor, getSecurityScoreLabel, getSocialAccountIcon } from '@/hooks/useAccountStatus'
 import AccountStatusSidebar from '@/components/AccountStatusSidebar'
+import TwoFactorManagement from '@/components/TwoFactorManagement'
+import Link from 'next/link'
 
 interface AuthMethod {
   id: string
@@ -1011,13 +1013,35 @@ export default function SecurityPage() {
   return (
     <ProtectedRoute>
       <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Account Security</h1>
-          <p className="mt-2 text-gray-600">
+
+         {/* Header */}
+         <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 flex items-center space-x-3">
+              <span>👤</span>
+              <span>Account Security</span>
+            </h1>
+            <p className="mt-2 text-gray-600">
             Manage your authentication methods and security settings
-          </p>
-        </div>
+            </p>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+
+            <Link
+              href="/account/profile"
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              🔐 Profile
+            </Link>
+            <Link
+              href="/account/settings"
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              ⚙️ Preferences
+            </Link>            
+          </div>
+        </div>       
 
         {/* Success/Error Messages */}
         {success && (
@@ -1109,6 +1133,9 @@ export default function SecurityPage() {
                 </div>
               </div>
             </div>
+
+            {/* ====== ADD 2FA COMPONENT HERE ====== */}
+            <TwoFactorManagement />            
 
             {/* Quick Actions */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200">
