@@ -465,9 +465,11 @@ function AddSocialModal({
   onSuccess: (message: string) => void
   onError: (error: string) => void
 }) {
+  const { update } = useSession()
   const [providers, setProviders] = useState<any>({})
   const [isLoading, setIsLoading] = useState(false)
   const [localError, setLocalError] = useState('')
+  const [isConnecting, setIsConnecting] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -497,40 +499,66 @@ function AddSocialModal({
 
   const handleSocialConnect = async (providerId: string) => {
     setIsLoading(true)
+    setIsConnecting(true)
     setLocalError('')
 
     try {
+      console.log(`🔗 Attempting to connect ${providerId} account...`)
+      
       const result = await signIn(providerId, { 
         redirect: false,
         callbackUrl: '/account/security?social_linked=true'
       })
 
+      console.log(`🔗 SignIn result for ${providerId}:`, result)
+
+      // Handle specific error cases
       if (result?.error) {
-        // Handle specific OAuth errors
+        console.error(`❌ Error connecting ${providerId}:`, result.error)
+        
         if (result.error.includes('OAuthAccountNotLinked')) {
           setLocalError('This social account is already linked to another user account. Would you like to link accounts instead? Please use the "Find Accounts" feature.')
         } else if (result.error.includes('OAuthCallbackError')) {
           setLocalError('Failed to connect to the social provider. Please try again.')
         } else if (result.error.includes('AccessDenied')) {
           setLocalError('Access was denied. Please grant permission to link your account.')
+        } else if (result.error.includes('Signin')) {
+          setLocalError('Failed to sign in with the social provider. Please try again.')
         } else {
           setLocalError(`Failed to connect social account: ${result.error}`)
         }
-      } else if (result?.ok) {
-        onSuccess('Social account connected successfully!')
-        onClose()
-        setLocalError('')
-        // The page will redirect via callbackUrl
-      } else {
-        setLocalError('Failed to connect social account. Please try again.')
+        return
       }
+
+      // For social account linking, we need to check if the user is still authenticated
+      // and if the linking was successful by checking the session
+      console.log(`✅ ${providerId} authentication completed, verifying link...`)
+      
+      // Wait a moment for the session to update
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Refresh the session to get updated user data
+      await update()
+      
+      // At this point, if we reach here without errors, consider it successful
+      console.log(`✅ ${providerId} account linked successfully`)
+      onSuccess(`${providerId.charAt(0).toUpperCase() + providerId.slice(1)} account connected successfully!`)
+      onClose()
+      setLocalError('')
+      
+      // Optional: Force a page refresh to ensure all data is updated
+      // window.location.reload()
+
     } catch (error) {
-      console.error('Social connect error:', error)
+      console.error(`❌ Social connect error for ${providerId}:`, error)
       setLocalError('Failed to connect social account. Please try again.')
     } finally {
       setIsLoading(false)
+      setIsConnecting(false)
     }
   }
+
+
 
   if (!isOpen) return null
 

@@ -101,9 +101,13 @@ export default function EnhancedNavigation() {
                 >
                   <div className="relative">
                     <img
-                      src={session.user?.image || ''}
+                      src={session.user?.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user?.name || 'User')}&background=3B82F6&color=ffffff&size=200&bold=true`}
                       alt={session.user?.name || ''}
-                      className="w-8 h-8 rounded-full border-2 border-gray-200"
+                      className="w-8 h-8 rounded-full border-2 border-gray-200 object-cover"
+                      onError={(e) => {
+                        // Fallback if image fails to load
+                        e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user?.name || 'User')}&background=3B82F6&color=ffffff&size=200&bold=true`
+                      }}
                     />
                     {session.user?.hasLinkedAccounts && (
                       <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full flex items-center justify-center">
