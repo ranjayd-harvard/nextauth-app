@@ -4,6 +4,7 @@
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
+import ProfileAvatar from '@/components/ProfileAvatar'
 
 export default function EnhancedNavigation() {
   const { data: session, status } = useSession()
@@ -100,7 +101,15 @@ export default function EnhancedNavigation() {
                   className="flex items-center space-x-3 text-gray-700 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <div className="relative">
-                    <img
+                    <ProfileAvatar
+                      src={session.user?.image}
+                      name={session.user?.name}
+                      email={session.user?.email}
+                      size="sm"
+                      avatarType={session.user?.avatarType}
+                      showBadge={false}
+                    />
+                    {/* <img
                       src={session.user?.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user?.name || 'User')}&background=3B82F6&color=ffffff&size=200&bold=true`}
                       alt={session.user?.name || ''}
                       className="w-8 h-8 rounded-full border-2 border-gray-200 object-cover"
@@ -108,7 +117,7 @@ export default function EnhancedNavigation() {
                         // Fallback if image fails to load
                         e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user?.name || 'User')}&background=3B82F6&color=ffffff&size=200&bold=true`
                       }}
-                    />
+                    /> */}
                     {session.user?.hasLinkedAccounts && (
                       <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full flex items-center justify-center">
                         <span className="text-white text-xs font-bold">🔗</span>
@@ -134,10 +143,13 @@ export default function EnhancedNavigation() {
                       {/* User Info Header */}
                       <div className="px-4 py-3 border-b border-gray-100">
                         <div className="flex items-center space-x-3">
-                          <img
-                            src={session.user?.image || ''}
-                            alt={session.user?.name || ''}
-                            className="w-10 h-10 rounded-full"
+                          <ProfileAvatar
+                            src={session.user?.image}
+                            name={session.user?.name}
+                            email={session.user?.email}
+                            size="md"
+                            avatarType={session.user?.avatarType}
+                            showBadge={false}
                           />
                           <div className="flex-1">
                             <div className="font-medium text-gray-900">{session.user?.name}</div>

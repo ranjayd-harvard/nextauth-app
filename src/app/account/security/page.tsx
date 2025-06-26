@@ -1041,6 +1041,7 @@ export default function SecurityPage() {
 
   return (
     <ProtectedRoute>
+
       <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
 
          {/* Header */}
@@ -1152,11 +1153,11 @@ export default function SecurityPage() {
             {/* ====== ADD 2FA COMPONENT HERE ====== */}
             <TwoFactorManagement />            
 
-            {/* Quick Actions */}
+            {/* Add More to Sign-in or Link Accounts */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Quick Actions
+                  Add More to Sign-in or Link Accounts
                 </h2>
               </div>
               
@@ -1364,6 +1365,8 @@ export default function SecurityPage() {
             </div>
           </div>
         </div>
+
+        
 
         {/* Account Linking Modal */}
         <AccountLinkingModal

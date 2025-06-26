@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AccountNavDropdown from '@/components/AccountNavDropDown'
+import ProfileAvatar from '@/components/ProfileAvatar'
 
 interface UserProfile {
   user: {
@@ -282,10 +283,14 @@ export default function ProfilePage() {
                 <div className="flex items-start space-x-4 mb-6">
                   <div className="flex-shrink-0">
                     {userProfile?.user.image ? (
-                      <img
-                        src={userProfile.user.image}
-                        alt="Profile"
-                        className="w-16 h-16 rounded-full"
+                      <ProfileAvatar
+                        src={session.user?.image}
+                        name={session.user?.name}
+                        email={session.user?.email}
+                        size="xl"
+                        avatarType={session.user?.avatarType}
+                        showBadge={true}
+                        className="border-4 border-white"
                       />
                     ) : (
                       <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center">

@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     // your existing config
   },
   images: {
-    domains: ['lh3.googleusercontent.com', 'avatars.githubusercontent.com'],
+    domains: ['lh3.googleusercontent.com', 'avatars.githubusercontent.com','ui-avatars.com'],
   },
   // // Optional: Webpack configuration for Docker compatibility
   // webpack: (config, { isServer }) => {
