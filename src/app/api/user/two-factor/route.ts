@@ -1,7 +1,7 @@
-// src/app/api/user/two-factor/route.ts
+// src/app/api/user/two-factor/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth' // FIXED: Use enhanced auth
 import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 import speakeasy from 'speakeasy'
@@ -266,7 +266,7 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    // If token provided, verify it (additional security)
+    // Optionally verify 2FA token for extra security
     if (token) {
       const verified = speakeasy.totp.verify({
         secret: user.twoFactorSecret,

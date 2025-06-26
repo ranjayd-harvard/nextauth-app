@@ -1,7 +1,7 @@
 // src/app/api/user/add-email/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth'
 import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 import { sendEmail, emailTemplates } from '@/lib/email'

@@ -1,4 +1,4 @@
-// src/app/auth/sign-in/page.tsx
+// src/app/auth/sign-in/page.tsx - Your UI with 2FA support
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -185,7 +185,7 @@ export default function UnifiedSignIn() {
   )
 }
 
-// Email Sign-In Form Component
+// Email Sign-In Form Component - Enhanced with 2FA support
 function EmailSignInForm({ 
   callbackUrl, 
   onError, 
@@ -197,12 +197,15 @@ function EmailSignInForm({
   isLoading: boolean
   setIsLoading: (loading: boolean) => void
 }) {
+  const [step, setStep] = useState<'credentials' | '2fa'>('credentials')
   const [formData, setFormData] = useState({
     email: '',
-    password: ''
+    password: '',
+    twoFactorCode: ''
   })
+  const [userEmail, setUserEmail] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     onError('')
@@ -215,7 +218,13 @@ function EmailSignInForm({
       })
 
       if (result?.error) {
-        onError(result.error)
+        if (result.error === '2FA_REQUIRED') {
+          setUserEmail(formData.email)
+          setStep('2fa')
+          onError('')
+        } else {
+          onError(result.error)
+        }
       } else if (result?.ok) {
         window.location.href = callbackUrl
       }
@@ -226,8 +235,123 @@ function EmailSignInForm({
     }
   }
 
+  const handle2FASubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    onError('')
+
+    // 🔍 DEBUG: Log what we're sending
+    console.log('🔍 DEBUG: About to submit 2FA form with:', {
+      email: formData.email,
+      password: formData.password ? '[REDACTED]' : 'MISSING',
+      twoFactorCode: formData.twoFactorCode,
+      twoFactorCodeLength: formData.twoFactorCode?.length
+    })    
+
+    try {
+      const result = await signIn('credentials', {
+        email: formData.email,
+        password: formData.password,
+        twoFactorCode: formData.twoFactorCode,
+        redirect: false,
+      })
+
+      // 🔍 DEBUG: Log the result
+      console.log('🔍 DEBUG: SignIn result:', result)
+
+      if (result?.error) {
+        console.log('❌ DEBUG: SignIn error:', result.error)
+        if (result.error.includes('Invalid 2FA code')) {
+          onError('Invalid verification code. Please try again.')
+        } else {
+          onError('Authentication failed. Please try again.')
+        }
+      } else if (result?.ok) {
+        console.log('✅ DEBUG: SignIn successful, redirecting...')
+        window.location.href = callbackUrl
+      }
+    } catch (error) {
+      console.log('❌ DEBUG: Exception during signIn:', error)
+      onError('An unexpected error occurred. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const resetToCredentials = () => {
+    setStep('credentials')
+    setFormData(prev => ({ ...prev, twoFactorCode: '' }))
+    setUserEmail('')
+    onError('')
+  }
+
+  if (step === '2fa') {
+    return (
+      <form onSubmit={handle2FASubmit} className="space-y-4">
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-3">🔐</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Two-Factor Authentication</h3>
+          <p className="text-sm text-gray-600 mb-1">
+            Authentication required for
+          </p>
+          <p className="font-medium text-gray-900 mb-3">{userEmail}</p>
+          <p className="text-sm text-gray-600">
+            Enter the 6-digit code from your authenticator app or use a backup code
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="twoFactorCode" className="block text-sm font-medium text-gray-700 mb-1">
+            Verification Code
+          </label>
+          <input
+            id="twoFactorCode"
+            type="text"
+            required
+            value={formData.twoFactorCode}
+            onChange={(e) => setFormData(prev => ({ ...prev, twoFactorCode: e.target.value }))}
+            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-center text-lg tracking-widest"
+            placeholder="000000"
+            maxLength={8}
+            autoComplete="one-time-code"
+            autoFocus
+            disabled={isLoading}
+          />
+          <p className="mt-2 text-xs text-gray-500 text-center">
+            Enter your 6-digit authenticator code or 8-character backup code
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+        >
+          {isLoading ? (
+            <div className="flex items-center justify-center space-x-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <span>Verifying...</span>
+            </div>
+          ) : (
+            'Verify & Sign In'
+          )}
+        </button>
+
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={resetToCredentials}
+            className="text-sm text-blue-600 hover:text-blue-500"
+          >
+            ← Back to sign in
+          </button>
+        </div>
+      </form>
+    )
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleCredentialsSubmit} className="space-y-4">
       <div>
         <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
           Email Address
@@ -288,7 +412,7 @@ function EmailSignInForm({
   )
 }
 
-// Phone Sign-In Form Component
+// Phone Sign-In Form Component - Kept exactly the same
 function PhoneSignInForm({ 
   callbackUrl, 
   onError, 
@@ -313,7 +437,7 @@ function PhoneSignInForm({
     onError('')
 
     try {
-      const response = await fetch('/api/auth/phone-login', {
+      const response = await fetch('/api/auth/phone/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -464,7 +588,7 @@ function PhoneSignInForm({
   )
 }
 
-// Social Sign-In Form Component
+// Social Sign-In Form Component - Kept exactly the same
 function SocialSignInForm({ 
   providers, 
   callbackUrl, 

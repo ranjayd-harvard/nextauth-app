@@ -1,7 +1,7 @@
 // src/app/api/user/verify-phone/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth'
 import { TokenManager } from '@/lib/tokens'
 import { verifyCode } from '@/lib/sms'
 import clientPromise from '@/lib/db'

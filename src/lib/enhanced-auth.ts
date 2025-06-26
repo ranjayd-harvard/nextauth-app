@@ -1,4 +1,4 @@
-// src/lib/enhanced-auth.ts
+// src/lib/enhanced-auth.ts - Corrected with complete 2FA support
 import { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import GitHubProvider from 'next-auth/providers/github'
@@ -11,6 +11,27 @@ import { verifyCode } from './sms'
 import { EnhancedAccountLinkingService } from './enhanced-account-linking'
 import { EnhancedAuthIntegration } from './enhanced-auth-integration'
 import { ActivityTracker } from './activity-tracker'
+import speakeasy from 'speakeasy'
+
+// Format phone number function (same as used in registration)
+function formatPhoneNumber(phoneNumber: string, countryCode: string = 'US'): string {
+  const cleaned = phoneNumber.replace(/\D/g, '')
+  const countryPrefixes: Record<string, string> = {
+    'US': '+1', 'CA': '+1', 'GB': '+44', 'IN': '+91',
+    'AU': '+61', 'DE': '+49', 'FR': '+33', 'JP': '+81',
+    'BR': '+55', 'MX': '+52', 'IT': '+39', 'ES': '+34',
+    'NL': '+31', 'SE': '+46', 'NO': '+47', 'DK': '+45',
+    'FI': '+358', 'PL': '+48', 'CZ': '+420', 'HU': '+36'
+  }
+  const prefix = countryPrefixes[countryCode] || '+1'
+  if (phoneNumber.startsWith('+')) {
+    return phoneNumber
+  }
+  if ((countryCode === 'US' || countryCode === 'CA') && cleaned.startsWith('1')) {
+    return `+1${cleaned.substring(1)}`
+  }
+  return `${prefix}${cleaned}`
+}
 
 export const enhancedAuthOptions: NextAuthOptions = {
   adapter: MongoDBAdapter(clientPromise),
@@ -19,20 +40,33 @@ export const enhancedAuthOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       allowDangerousEmailAccountLinking: true,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
     }),
     GitHubProvider({
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!,
       allowDangerousEmailAccountLinking: true,
+      authorization: {
+        params: {
+          scope: "user:email"
+        }
+      }
     }),
     CredentialsProvider({
       id: 'credentials',
       name: 'Email & Password',
       credentials: {
         email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' }
+        password: { label: 'Password', type: 'password' },
+        twoFactorCode: { label: '2FA Code', type: 'text' }
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) {
           return null
         }
@@ -43,37 +77,136 @@ export const enhancedAuthOptions: NextAuthOptions = {
         })
 
         if (!authResult?.user) {
+          console.log('❌ DEBUG: User not found for email:', credentials.email)
+          // Track failed login attempt
+          await ActivityTracker.track(
+            credentials.email,
+            'auth_failed_login',
+            'Failed login attempt - user not found',
+            { 
+              reason: 'user_not_found', 
+              email: credentials.email,
+              provider: 'credentials'
+            },
+            req
+          )
           return null
         }
 
         const user = authResult.user
+        console.log('🔍 DEBUG: User found:', {
+          id: user._id,
+          email: user.email,
+          twoFactorEnabled: user.twoFactorEnabled,
+          hasTwoFactorSecret: !!user.twoFactorSecret,
+          hasBackupCodes: !!(user.backupCodes && user.backupCodes.length > 0),
+          backupCodesCount: user.backupCodes?.length || 0
+        })
 
         // Check if user registered with OAuth but trying to sign in with credentials
         if (!user.password && user.registerSource !== 'credentials') {
+          await ActivityTracker.track(
+            user._id.toString(),
+            'auth_failed_login',
+            `Failed login attempt - registered with ${user.registerSource}`,
+            { 
+              reason: 'wrong_provider', 
+              email: credentials.email,
+              actualProvider: user.registerSource,
+              attemptedProvider: 'credentials'
+            },
+            req
+          )
           throw new Error(`This email is registered with ${user.registerSource}. Please use ${user.registerSource} to sign in.`)
         }
 
         if (!user.password) {
+          await ActivityTracker.track(
+            user._id.toString(),
+            'auth_failed_login',
+            'Failed login attempt - no password set',
+            { 
+              reason: 'no_password', 
+              email: credentials.email 
+            },
+            req
+          )
           return null
         }
 
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
         
         if (!isPasswordValid) {
+          await ActivityTracker.track(
+            user._id.toString(),
+            'auth_failed_login',
+            'Failed login attempt - invalid password',
+            { 
+              reason: 'invalid_password', 
+              email: credentials.email 
+            },
+            req
+          )
           return null
         }
 
-        // Update user activity
-        await EnhancedAuthIntegration.updateUserActivity(user._id.toString())
+        // Check if 2FA is enabled for this user
+        if (user.twoFactorEnabled && user.twoFactorSecret) {
+          const twoFactorCode = credentials.twoFactorCode
+          console.log('🔍 DEBUG: 2FA Code received:', twoFactorCode)
 
+          if (!twoFactorCode) {
+            console.log('❌ DEBUG: No 2FA code provided, throwing 2FA_REQUIRED')
+            throw new Error('2FA_REQUIRED')
+          }
+
+          // Verify 2FA code
+          console.log('🔍 DEBUG: Attempting TOTP verification...')
+          const verified = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token: twoFactorCode,
+            window: 2
+          })
+          console.log('🔍 DEBUG: TOTP verification result:', verified)
+
+          if (verified) {
+            console.log('✅ DEBUG: TOTP verification successful!')
+            // TOTP is valid, continue with authentication
+          } else {
+            // Check backup codes
+            console.log('🔍 DEBUG: TOTP failed, checking backup codes...')
+            if (user.backupCodes && user.backupCodes.includes(twoFactorCode.toUpperCase())) {
+              console.log('✅ DEBUG: Backup code valid!')
+              // Remove used backup code
+              const client = await clientPromise
+              const users = client.db().collection('users')
+              await users.updateOne(
+                { _id: user._id },
+                { $pull: { backupCodes: twoFactorCode.toUpperCase() } }
+              )
+            } else {
+              console.log('❌ DEBUG: Both TOTP and backup code failed')
+              throw new Error('Invalid 2FA code')
+            }
+          }
+          
+          console.log('✅ DEBUG: 2FA validation passed, continuing...')
+        }
+
+        // Update user activity through Enhanced Auth Integration
+        await EnhancedAuthIntegration.updateUserActivity(user._id.toString())
+        console.log('✅ DEBUG: Authentication successful, returning user')
+
+        // Successful authentication
         return {
           id: user._id.toString(),
-          email: user.email || user.primaryEmail,
-          phoneNumber: user.phoneNumber || user.primaryPhone,
+          email: user.email,
           name: user.name,
           image: user.image,
           registerSource: user.registerSource,
           avatarType: user.avatarType,
+          twoFactorEnabled: user.twoFactorEnabled || false,
           groupId: user.groupId,
           linkedEmails: user.linkedEmails || [],
           linkedPhones: user.linkedPhones || [],
@@ -84,84 +217,72 @@ export const enhancedAuthOptions: NextAuthOptions = {
     }),
     CredentialsProvider({
       id: 'phone',
-      name: 'Phone Number',
+      name: 'Phone Number', 
       credentials: {
         phoneNumber: { label: 'Phone Number', type: 'tel' },
         code: { label: 'Verification Code', type: 'text' }
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         console.log('🔐 Phone provider authorize called with:', credentials)
         
         if (!credentials?.phoneNumber || !credentials?.code) {
-          console.log('🔐 Missing credentials')
           return null
         }
-    
-        // Format phone number function (same as used in registration)
-        function formatPhoneNumber(phoneNumber: string, countryCode: string = 'US'): string {
-          const cleaned = phoneNumber.replace(/\D/g, '')
-          
-          const countryPrefixes: Record<string, string> = {
-            'US': '+1', 'CA': '+1', 'GB': '+44', 'IN': '+91',
-            'AU': '+61', 'DE': '+49', 'FR': '+33', 'JP': '+81',
-            'BR': '+55', 'MX': '+52', 'IT': '+39', 'ES': '+34',
-            'NL': '+31', 'SE': '+46', 'NO': '+47', 'DK': '+45',
-            'FI': '+358', 'PL': '+48', 'CZ': '+420', 'HU': '+36'
-          }
-          
-          const prefix = countryPrefixes[countryCode] || '+1'
-          
-          if (phoneNumber.startsWith('+')) {
-            return phoneNumber
-          }
-          
-          if ((countryCode === 'US' || countryCode === 'CA') && cleaned.startsWith('1')) {
-            return `+1${cleaned.substring(1)}`
-          }
-          
-          return `${prefix}${cleaned}`
-        }
-    
-        // CRITICAL FIX: Format the phone number before lookup
-        const formattedPhone = formatPhoneNumber(credentials.phoneNumber)
-        console.log('🔐 Formatted phone for lookup:', formattedPhone)
-    
+
+        // Format the phone number consistently
+        const formattedPhoneNumber = formatPhoneNumber(credentials.phoneNumber)
+        console.log('🔐 Formatted phone number:', formattedPhoneNumber)
+
         // Use enhanced authentication to find user with group support
         const authResult = await EnhancedAuthIntegration.authenticateUserWithGroup({
-          phoneNumber: formattedPhone  // Use formatted phone
+          phoneNumber: formattedPhoneNumber
         })
-    
+
         if (!authResult?.user) {
-          console.log('🔐 User not found with formatted phone:', formattedPhone)
+          console.log('❌ User not found for phone:', formattedPhoneNumber)
+          await ActivityTracker.track(
+            formattedPhoneNumber,
+            'auth_failed_login',
+            'Failed phone login attempt - user not found',
+            { 
+              reason: 'user_not_found', 
+              phoneNumber: formattedPhoneNumber,
+              provider: 'phone'
+            },
+            req
+          )
           return null
         }
-    
+
         const user = authResult.user
-    
-        if (!user.phoneVerified) {
-          console.log('🔐 Phone not verified for user:', user._id)
-          throw new Error('Phone number is not verified')
-        }
-    
-        console.log('🔐 Verifying code with Twilio...')
-    
-        // Verify code using Twilio Verify (use formatted phone)
-        const { verifyCode } = await import('@/lib/sms')
-        const verificationResult = await verifyCode(formattedPhone, credentials.code)
+
+        // Verify the SMS code
+        const isCodeValid = await verifyCode(formattedPhoneNumber, credentials.code)
         
-        if (!verificationResult.success) {
-          console.log('🔐 Code verification failed:', verificationResult.error)
+        if (!isCodeValid) {
+          console.log('❌ Invalid verification code for phone:', formattedPhoneNumber)
+          await ActivityTracker.track(
+            user._id.toString(),
+            'auth_failed_login',
+            'Failed phone login attempt - invalid code',
+            { 
+              reason: 'invalid_code', 
+              phoneNumber: formattedPhoneNumber 
+            },
+            req
+          )
           throw new Error('Invalid or expired login code')
         }
-    
+
         console.log('🔐 Phone authentication successful for user:', user._id)
-    
+
         // Update user activity
         await EnhancedAuthIntegration.updateUserActivity(user._id.toString())
-    
+
+        // Successful phone authentication
         return {
           id: user._id.toString(),
-          phoneNumber: user.phoneNumber || user.primaryPhone,
+          phoneNumber: formattedPhoneNumber,
           email: user.email || user.primaryEmail,
           name: user.name,
           image: user.image,
@@ -171,259 +292,138 @@ export const enhancedAuthOptions: NextAuthOptions = {
           linkedEmails: user.linkedEmails || [],
           linkedPhones: user.linkedPhones || [],
           linkedProviders: user.linkedProviders || [],
-          hasLinkedAccounts: authResult.hasLinkedAccounts
+          hasLinkedAccounts: authResult.hasLinkedAccounts,
+          twoFactorEnabled: user.twoFactorEnabled || false
         }
       }
-    }),    
+    }),
   ],
   pages: {
     signIn: '/auth/sign-in',
   },
   callbacks: {
     async signIn({ user, account, profile }) {
-      if (account?.provider === 'google' || account?.provider === 'github') {
-        const client = await clientPromise
-        const users = client.db().collection('users')
-        
-        // Use enhanced service to find user with group support
-        const existingUser = await EnhancedAccountLinkingService.findUserByIdentifierWithGroup(user.email)
-        
-        if (existingUser) {
-          // Check for auto-linking opportunities
-          const autoLinkResult = await EnhancedAccountLinkingService.autoLinkIfConfident(
-            existingUser._id.toString(),
-            user.email,
-            undefined, // no phone
-            user.name || '',
-            95 // High confidence for OAuth linking
-          )
-
-          if (autoLinkResult.linked) {
-            console.log(`🔗 OAuth auto-linked user ${existingUser._id} into group ${autoLinkResult.groupId}`)
-          }
-
-          // Update OAuth linking data
-          const updateData: any = {
-            linkedProviders: existingUser.linkedProviders 
-              ? [...new Set([...existingUser.linkedProviders, account.provider])]
-              : [account.provider],
-            updatedAt: new Date(),
-            lastSignIn: new Date()
-          }
-
-          // Update avatar if better quality available
-          if (existingUser.avatarType === 'default' && user.image) {
-            updateData.image = user.image
-            updateData.avatarType = 'oauth'
-          }
-
-          await users.updateOne(
-            { _id: existingUser._id },
-            { $set: updateData }
-          )
+      try {
+        if (account?.provider === 'google' || account?.provider === 'github') {
+          console.log(`🔗 OAuth signIn attempt with ${account.provider} for email: ${user.email}`)
           
-          user.id = existingUser._id.toString()
-          user.groupId = existingUser.groupId || autoLinkResult.groupId
-          return true
-        } else {
-          // New OAuth user - check for linking opportunities during creation
-          console.log('🔗 New OAuth user - checking for linking opportunities...')
+          const client = await clientPromise
+          const users = client.db().collection('users')
+          
+          const existingUser = await users.findOne({ email: user.email })
+          
+          if (existingUser) {
+            console.log(`✅ Found existing user with email ${user.email}, linking account...`)
+            
+            // Update existing user with OAuth provider
+            const updateData = {
+              linkedProviders: existingUser.linkedProviders 
+                ? [...new Set([...existingUser.linkedProviders, account.provider])]
+                : [account.provider],
+              updatedAt: new Date(),
+              lastSignIn: new Date()
+            }
+    
+            // Update avatar if better quality available
+            if (existingUser.avatarType === 'default' && user.image) {
+              updateData.image = user.image
+              updateData.avatarType = 'oauth'
+            }
+    
+            await users.updateOne(
+              { _id: existingUser._id },
+              { $set: updateData }
+            )
+            
+            // Set the user ID to the existing user
+            user.id = existingUser._id.toString()
+            user.registerSource = existingUser.registerSource
+            user.groupId = existingUser.groupId
+            user.linkedEmails = existingUser.linkedEmails || []
+            user.linkedPhones = existingUser.linkedPhones || []
+            user.linkedProviders = updateData.linkedProviders
+            user.hasLinkedAccounts = true
+    
+            console.log(`✅ Successfully linked ${account.provider} to existing user ${existingUser._id}`)
+    
+            // Track OAuth provider linking to existing account
+            await ActivityTracker.track(
+              existingUser._id.toString(),
+              'security_oauth_added',
+              `Linked ${account.provider} account`,
+              { 
+                provider: account.provider,
+                email: user.email,
+                linkedToExisting: true
+              }
+            )
+          } else {
+            console.log(`🆕 New OAuth user with ${account.provider}, creating account...`)
+            
+            // Handle new OAuth users with enhanced account linking
+            const linkingResult = await EnhancedAccountLinkingService.linkOAuthAccount({
+              email: user.email!,
+              provider: account.provider,
+              providerAccountId: account.providerAccountId!,
+              name: user.name || profile?.name,
+              image: user.image || profile?.image
+            })
+    
+            if (!linkingResult.success) {
+              console.error('OAuth account linking failed:', linkingResult.error)
+              return false
+            }
+    
+            console.log(`✅ OAuth account linking completed for new user`)
+          }
         }
+    
+        // Track successful sign in for all providers
+        if (user.id) {
+          await ActivityTracker.track(
+            user.id,
+            'auth_signin',
+            `Successful sign in with ${account?.provider || 'credentials'}`,
+            { 
+              provider: account?.provider || 'credentials',
+              email: user.email,
+              hasLinkedAccounts: user.hasLinkedAccounts || false
+            }
+          )
+        }
+    
+        return true
+      } catch (error) {
+        console.error('SignIn callback error:', error)
+        return false
       }
-      return true
     },
-    async jwt({ token, account, user }) {
-      if (account) {
-        token.accessToken = account.access_token
-        token.provider = account.provider
-      }
+    async jwt({ token, user, account }) {
       if (user) {
-        token.id = user.id
         token.registerSource = user.registerSource
-        token.picture = user.image
         token.avatarType = user.avatarType
-        token.phoneNumber = user.phoneNumber
+        token.twoFactorEnabled = user.twoFactorEnabled
         token.groupId = user.groupId
-        token.linkedEmails = user.linkedEmails
-        token.linkedPhones = user.linkedPhones
-        token.linkedProviders = user.linkedProviders
         token.hasLinkedAccounts = user.hasLinkedAccounts
       }
-      
-      // For OAuth users, get the latest data from database including group info
-      if (account && (account.provider === 'google' || account.provider === 'github') && user.email) {
-        const authResult = await EnhancedAuthIntegration.authenticateUserWithGroup({
-          email: user.email
-        })
-        
-        if (authResult?.user) {
-          token.registerSource = authResult.user.registerSource
-          token.id = authResult.user._id.toString()
-          token.picture = authResult.user.image
-          token.avatarType = authResult.user.avatarType
-          token.groupId = authResult.user.groupId
-          token.linkedEmails = authResult.user.linkedEmails || []
-          token.linkedPhones = authResult.user.linkedPhones || []
-          token.linkedProviders = authResult.user.linkedProviders || []
-          token.hasLinkedAccounts = authResult.hasLinkedAccounts
-        }
-      }
-      
       return token
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string
+      if (session.user) {
+        session.user.id = token.sub!
         session.user.registerSource = token.registerSource as string
-        session.user.provider = token.provider as string
-        session.user.image = token.picture as string
         session.user.avatarType = token.avatarType as string
-        session.user.phoneNumber = token.phoneNumber as string
+        session.user.twoFactorEnabled = token.twoFactorEnabled as boolean
+        
+        // Add enhanced session data
         session.user.groupId = token.groupId as string
-        session.user.linkedEmails = token.linkedEmails as string[]
-        session.user.linkedPhones = token.linkedPhones as string[]
-        session.user.linkedProviders = token.linkedProviders as string[]
         session.user.hasLinkedAccounts = token.hasLinkedAccounts as boolean
-        session.accessToken = token.accessToken
       }
       return session
     },
   },
-  events: {
-    async createUser({ user }) {
-      const client = await clientPromise
-      const users = client.db().collection('users')
-      
-      // Initialize user with enhanced linking structure
-      const updateData: any = {
-        registerSource: 'oauth',
-        avatarType: 'oauth',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        linkedProviders: [],
-        linkedEmails: user.email ? [user.email] : [],
-        linkedPhones: [],
-        accountStatus: 'active',
-        emailVerified: true // OAuth users are pre-verified
-      }
-
-      // Check for auto-linking opportunities for new OAuth users
-      if (user.email) {
-        console.log(`🔗 Checking auto-linking for new OAuth user: ${user.email}`)
-        
-        const linkingSuggestion = await EnhancedAccountLinkingService.suggestAccountLinking(
-          user.email,
-          undefined,
-          user.name || ''
-        )
-
-        if (linkingSuggestion.shouldSuggest && linkingSuggestion.confidence >= 95) {
-          console.log(`🔗 High confidence linking found (${linkingSuggestion.confidence}%) - attempting auto-link`)
-          
-          const autoLinkResult = await EnhancedAccountLinkingService.autoLinkIfConfident(
-            user.id,
-            user.email,
-            undefined,
-            user.name || '',
-            95
-          )
-
-          if (autoLinkResult.linked) {
-            updateData.groupId = autoLinkResult.groupId
-            console.log(`✅ OAuth user ${user.id} auto-linked into group ${autoLinkResult.groupId}`)
-          }
-        }
-      }
-
-      const existingUser = await users.findOne({ email: user.email })
-      if (!existingUser || !existingUser.registerSource) {
-        await users.updateOne(
-          { email: user.email },
-          { $set: updateData }
-        )
-      }
-    },
-    async signIn({ user, account, profile, isNewUser }) {
-      try {
-        // Update user activity on every sign-in
-        if (user.id) {
-          await EnhancedAuthIntegration.updateUserActivity(user.id)
-          
-          // Track the sign-in activity
-          const method = account?.provider || 'credentials'
-          await ActivityTracker.trackSignIn(user.id, method)
-          
-          console.log(`🔓 Sign-in tracked for user ${user.id} via ${method}`)
-        }
-        return true
-      } catch (error) {
-        console.error('❌ SignIn callback error:', error)
-        return true // Don't block sign-in if tracking fails
-      }
-    },
-    async signOut({ session, token }) {
-      try {
-        const userId = session?.user?.id || token?.id as string
-        if (userId) {
-          await ActivityTracker.trackSignOut(userId)
-          console.log(`🔒 Sign-out tracked for user ${userId}`)
-        }
-      } catch (error) {
-        console.error('❌ SignOut event error:', error)
-      }
-    },    
-  },
   session: {
     strategy: 'jwt',
   },
-}
-
-// Enhanced session type declaration
-declare module 'next-auth' {
-  interface User {
-    registerSource?: string
-    avatarType?: string
-    phoneNumber?: string
-    groupId?: string
-    linkedEmails?: string[]
-    linkedPhones?: string[]
-    linkedProviders?: string[]
-    hasLinkedAccounts?: boolean
-  }
-
-  interface Session {
-    user: {
-      id: string
-      name?: string | null
-      email?: string | null
-      image?: string | null
-      registerSource?: string
-      provider?: string
-      avatarType?: string
-      phoneNumber?: string
-      groupId?: string
-      linkedEmails?: string[]
-      linkedPhones?: string[]
-      linkedProviders?: string[]
-      hasLinkedAccounts?: boolean
-    }
-    accessToken?: string
-  }
-}
-
-declare module 'next-auth/jwt' {
-  interface JWT {
-    id?: string
-    registerSource?: string
-    provider?: string
-    picture?: string
-    avatarType?: string
-    phoneNumber?: string
-    groupId?: string
-    linkedEmails?: string[]
-    linkedPhones?: string[]
-    linkedProviders?: string[]
-    hasLinkedAccounts?: boolean
-    accessToken?: string
-  }
+  debug: process.env.NODE_ENV === 'development',
 }

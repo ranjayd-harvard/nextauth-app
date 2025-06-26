@@ -1,7 +1,7 @@
-// src/app/api/user/two-factor/status/route.ts
+// src/app/api/user/two-factor/status/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth' // FIXED: Use enhanced auth
 import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       backupCodes.push(crypto.randomBytes(4).toString('hex').toUpperCase())
     }
 
-    // Update user with new backup codes
+    // Update backup codes in database
     const updateResult = await users.updateOne(
       { _id: new ObjectId(session.user.id) },
       { 
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
           backupCodes: backupCodes,
           updatedAt: new Date()
         },
-        $push: { 
+        $push: {
           securityLog: {
             event: '2fa_backup_codes_generated',
             timestamp: new Date(),
@@ -154,115 +154,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    console.log(`✅ New backup codes generated for user: ${session.user.id}`)
+    console.log(`✅ Backup codes regenerated for user: ${session.user.id}`)
 
     return NextResponse.json({
       success: true,
-      message: 'New backup codes generated successfully',
-      backupCodes: backupCodes
+      backupCodes,
+      message: 'New backup codes generated successfully'
     })
 
   } catch (error) {
     console.error('❌ Generate backup codes error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE method to disable 2FA
-export async function DELETE(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const { password } = await req.json()
-
-    if (!password) {
-      return NextResponse.json(
-        { error: 'Password confirmation is required' },
-        { status: 400 }
-      )
-    }
-
-    const client = await clientPromise
-    const users = client.db().collection('users')
-    
-    const user = await users.findOne({ _id: new ObjectId(session.user.id) })
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      )
-    }
-
-    if (!user.twoFactorEnabled) {
-      return NextResponse.json(
-        { error: '2FA is not enabled' },
-        { status: 400 }
-      )
-    }
-
-    // Verify password
-    if (user.password) {
-      const bcrypt = require('bcryptjs')
-      const isPasswordValid = await bcrypt.compare(password, user.password)
-      if (!isPasswordValid) {
-        return NextResponse.json(
-          { error: 'Invalid password' },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Disable 2FA and remove secrets
-    const updateResult = await users.updateOne(
-      { _id: new ObjectId(session.user.id) },
-      { 
-        $set: { 
-          twoFactorEnabled: false,
-          updatedAt: new Date()
-        },
-        $unset: {
-          twoFactorSecret: "",
-          backupCodes: "",
-          tempTwoFactorSecret: ""
-        },
-        $push: { 
-          securityLog: {
-            event: '2fa_disabled',
-            timestamp: new Date(),
-            ip: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown',
-            userAgent: req.headers.get('user-agent') || 'unknown'
-          }
-        }
-      }
-    )
-
-    if (updateResult.matchedCount === 0) {
-      return NextResponse.json(
-        { error: 'Failed to disable 2FA' },
-        { status: 500 }
-      )
-    }
-
-    console.log(`✅ 2FA disabled for user: ${session.user.id}`)
-
-    return NextResponse.json({
-      success: true,
-      message: '2FA disabled successfully'
-    })
-
-  } catch (error) {
-    console.error('❌ Disable 2FA error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

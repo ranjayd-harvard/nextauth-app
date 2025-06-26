@@ -1,7 +1,7 @@
-// src/app/api/user/backup-codes/route.ts
+// src/app/api/user/backup-codes/route.ts - FIXED
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth' // FIXED: Use enhanced auth
 import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 import crypto from 'crypto'
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
       { 
         $push: { 
           securityLog: {
-            event: 'backup_codes_regenerated',
+            event: '2fa_backup_codes_regenerated',
             timestamp: new Date(),
             ip: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown',
             userAgent: req.headers.get('user-agent') || 'unknown'
@@ -152,114 +152,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Backup codes regenerated successfully',
-      backupCodes: newBackupCodes
+      backupCodes: newBackupCodes,
+      message: 'Backup codes regenerated successfully'
     })
 
   } catch (error) {
     console.error('❌ Regenerate backup codes error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-// PATCH method to use a backup code (called during login)
-export async function PATCH(req: NextRequest) {
-  try {
-    const { email, backupCode } = await req.json()
-
-    if (!email || !backupCode) {
-      return NextResponse.json(
-        { error: 'Email and backup code are required' },
-        { status: 400 }
-      )
-    }
-
-    const client = await clientPromise
-    const users = client.db().collection('users')
-    
-    const user = await users.findOne({ email })
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid backup code' },
-        { status: 400 }
-      )
-    }
-
-    if (!user.twoFactorEnabled || !user.backupCodes) {
-      return NextResponse.json(
-        { error: 'Invalid backup code' },
-        { status: 400 }
-      )
-    }
-
-    // Check if backup code exists and is valid
-    const codeIndex = user.backupCodes.indexOf(backupCode.toUpperCase())
-    
-    if (codeIndex === -1) {
-      return NextResponse.json(
-        { error: 'Invalid backup code' },
-        { status: 400 }
-      )
-    }
-
-    // Remove the used backup code
-    const updatedBackupCodes = [...user.backupCodes]
-    updatedBackupCodes.splice(codeIndex, 1)
-
-    const updateResult = await users.updateOne(
-      { _id: user._id },
-      { 
-        $set: { 
-          backupCodes: updatedBackupCodes,
-          lastSignIn: new Date(),
-          updatedAt: new Date()
-        }
-      }
-    )
-
-    if (updateResult.matchedCount === 0) {
-      return NextResponse.json(
-        { error: 'Failed to process backup code' },
-        { status: 500 }
-      )
-    }
-
-    // Log security event
-    await users.updateOne(
-      { _id: user._id },
-      { 
-        $push: { 
-          securityLog: {
-            event: 'backup_code_used',
-            timestamp: new Date(),
-            ip: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown',
-            userAgent: req.headers.get('user-agent') || 'unknown',
-            remainingCodes: updatedBackupCodes.length
-          }
-        }
-      }
-    )
-
-    console.log(`✅ Backup code used for user: ${user._id}, remaining: ${updatedBackupCodes.length}`)
-
-    return NextResponse.json({
-      success: true,
-      message: 'Backup code accepted',
-      remainingCodes: updatedBackupCodes.length,
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        name: user.name,
-        image: user.image
-      }
-    })
-
-  } catch (error) {
-    console.error('❌ Use backup code error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
