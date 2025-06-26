@@ -55,8 +55,26 @@ export default function EnhancedNavigation() {
       if (response.ok) {
         const data = await response.json()
         setUserProfile(data.profile)
-        setAuthMethodsCount(data.profile.stats.totalAuthMethods)
-        console.log('Navigation: Auth methods count updated:', data.profile.stats.totalAuthMethods)
+        
+        // 🔥 Calculate auth methods count with fallback
+        let calculatedCount = data.profile.stats?.totalAuthMethods || 0
+        
+        // Fallback calculation if API returns 0 but we have methods
+        if (calculatedCount === 0 && data.profile.authMethods?.length > 0) {
+          calculatedCount = data.profile.authMethods.length
+          console.log('🔄 Using fallback auth methods count:', calculatedCount)
+        }
+        
+        // Double fallback using session data
+        if (calculatedCount === 0) {
+          calculatedCount = getSessionBasedAuthMethodsCount()
+          console.log('🔄 Using session-based auth methods count:', calculatedCount)
+        }
+        
+        setAuthMethodsCount(calculatedCount)
+        console.log('Navigation: Auth methods count updated:', calculatedCount)
+        console.log('API Stats:', data.profile.stats)
+        console.log('Auth Methods Array:', data.profile.authMethods)
       }
     } catch (error) {
       console.error('Failed to fetch user profile for navigation:', error)

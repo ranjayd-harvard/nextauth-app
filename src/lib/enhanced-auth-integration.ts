@@ -172,16 +172,29 @@ export class EnhancedAuthIntegration {
     try {
       const user = await users.findOne({ _id: new ObjectId(userId) })
       if (!user) return null
-
+  
       let linkedAccounts = []
       if (user.groupId) {
         linkedAccounts = await EnhancedAccountLinkingService.getGroupAccounts(user.groupId)
       }
-
+  
+      // 🔥 Calculate auth methods correctly
+      const authMethods = this.extractUserAuthMethods(user)
+      
+      // 🔥 Calculate account age in days
+      const accountAge = user.createdAt ? 
+        Math.floor((new Date().getTime() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0
+  
       return {
         user,
         linkedAccounts,
-        authMethods: this.extractUserAuthMethods(user),
+        authMethods,
+        // 🔥 Add proper stats calculation
+        stats: {
+          accountAge,
+          totalAuthMethods: authMethods.length, // This was missing!
+          hasLinkedAccounts: linkedAccounts.length > 1
+        },
         groupInfo: user.groupId ? {
           groupId: user.groupId,
           isMaster: user.isMaster || false,
@@ -194,6 +207,7 @@ export class EnhancedAuthIntegration {
       return null
     }
   }
+  
 
   // Helper method to add security log entry with request data
   static async addSecurityLogEntry(userId: string, event: string, details: any = {}, request?: Request) {
@@ -221,11 +235,30 @@ export class EnhancedAuthIntegration {
   private static extractUserAuthMethods(user: any): string[] {
     const methods: string[] = []
     
+    // Check for credentials (password-based login)
     if (user.password) methods.push('credentials')
-    if (user.phoneNumber && user.phoneVerified) methods.push('phone')
-    if (user.linkedProviders?.includes('google')) methods.push('google')
-    if (user.linkedProviders?.includes('github')) methods.push('github')
     
+    // Check for verified phone
+    if (user.phoneNumber && user.phoneVerified) methods.push('phone')
+    
+    // Check for OAuth providers
+    if (user.linkedProviders && Array.isArray(user.linkedProviders)) {
+      user.linkedProviders.forEach((provider: string) => {
+        if (!methods.includes(provider)) {
+          methods.push(provider)
+        }
+      })
+    }
+    
+    // Fallback: check registerSource for OAuth if no linkedProviders
+    if (user.registerSource && 
+        user.registerSource !== 'credentials' && 
+        user.registerSource !== 'phone' &&
+        !methods.includes(user.registerSource)) {
+      methods.push(user.registerSource)
+    }
+    
+    console.log(`🔍 Auth methods calculated for user ${user._id}:`, methods) // Debug log
     return methods
   }
 }

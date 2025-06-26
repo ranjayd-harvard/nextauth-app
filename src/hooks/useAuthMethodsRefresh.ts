@@ -8,6 +8,7 @@ import { useCallback } from 'react'
 export const useAuthMethodsRefresh = () => {
   const refreshNavigationAuthCount = useCallback(() => {
     try {
+      console.log('🔄 Dispatching refreshAuthMethods event...')
       // Dispatch a custom event that the navigation component listens to
       const event = new CustomEvent('refreshAuthMethods')
       window.dispatchEvent(event)

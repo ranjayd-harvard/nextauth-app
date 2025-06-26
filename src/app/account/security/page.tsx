@@ -820,6 +820,30 @@ export default function SecurityPage() {
     }
   }, [userProfile])
 
+  useEffect(() => {
+    // Debug: Manually refresh navigation on page load
+    if (session?.user?.id) {
+      console.log('🔄 Security page loaded, refreshing navigation auth count...')
+      // Force refresh navigation immediately
+      setTimeout(() => {
+        refreshNavigationAuthCount()
+      }, 1000)
+    }
+  }, [session?.user?.id, refreshNavigationAuthCount])
+  
+  useEffect(() => {
+    // Debug: Log when userProfile changes
+    if (userProfile) {
+      console.log('🔍 User profile data:', userProfile)
+      console.log('🔍 Auth methods from profile:', userProfile.authMethods)
+      console.log('🔍 Linked providers:', userProfile.user.linkedProviders)
+      console.log('🔍 Stats:', userProfile.stats || 'No stats object')
+      
+      // Force refresh navigation when profile updates
+      refreshNavigationAuthCount()
+    }
+  }, [userProfile, refreshNavigationAuthCount])  
+
   const fetchUserProfile = async () => {
     try {
       const response = await fetch('/api/user/complete-profile')
