@@ -600,4 +600,141 @@ export class EnhancedAccountLinkingService {
       return { linked: false, message: `Auto-link error: ${error.message}` }
     }
   }
+
+  // Add this method to your EnhancedAccountLinkingService class
+
+  static async linkOAuthAccount(params: {
+    email: string;
+    provider: string;
+    providerAccountId: string;
+    name?: string;
+    image?: string;
+  }): Promise<{
+    success: boolean;
+    userId?: string;
+    groupId?: string;
+    linked?: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const { email, provider, providerAccountId, name, image } = params;
+    const users = await this.getUsersCollection();
+
+    try {
+      // First, check if this OAuth account already exists
+      const existingOAuthUser = await users.findOne({
+        $and: [
+          { [`accounts.${provider}.providerAccountId`]: providerAccountId },
+          { accountStatus: { $ne: 'merged' } }
+        ]
+      });
+
+      if (existingOAuthUser) {
+        return {
+          success: true,
+          userId: existingOAuthUser._id.toString(),
+          groupId: existingOAuthUser.groupId,
+          linked: false,
+          message: 'OAuth account already exists'
+        };
+      }
+
+      // Look for existing users with this email
+      const existingUser = await this.findUserByIdentifierWithGroup(email);
+
+      if (existingUser) {
+        // User exists with this email - link the OAuth account
+        const updateData: any = {
+          [`accounts.${provider}`]: {
+            providerAccountId,
+            provider,
+            linkedAt: new Date()
+          },
+          $addToSet: {
+            linkedProviders: provider
+          },
+          updatedAt: new Date()
+        };
+
+        // Update image if it's an OAuth avatar and user doesn't have one
+        if (image && (!existingUser.image || existingUser.avatarType !== 'oauth')) {
+          updateData.image = image;
+          updateData.avatarType = 'oauth';
+        }
+
+        await users.updateOne(
+          { _id: existingUser._id },
+          { $set: updateData }
+        );
+
+        return {
+          success: true,
+          userId: existingUser._id.toString(),
+          groupId: existingUser.groupId,
+          linked: true,
+          message: `${provider} account linked to existing user`
+        };
+      }
+
+      // No existing user found - create new user
+      const newUserId = new ObjectId();
+      const userData = {
+        _id: newUserId,
+        email,
+        name: name || email.split('@')[0],
+        image,
+        avatarType: 'oauth',
+        emailVerified: true, // OAuth emails are typically verified
+        registerSource: 'oauth',
+        accounts: {
+          [provider]: {
+            providerAccountId,
+            provider,
+            linkedAt: new Date()
+          }
+        },
+        linkedProviders: [provider],
+        accountStatus: 'active',
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignIn: new Date()
+      };
+
+      await users.insertOne(userData);
+
+      // Try to auto-link with high confidence
+      const autoLinkResult = await this.autoLinkIfConfident(
+        newUserId.toString(),
+        email,
+        undefined, // no phone
+        name,
+        90 // lower threshold for OAuth since email is verified
+      );
+
+      if (autoLinkResult.linked) {
+        return {
+          success: true,
+          userId: newUserId.toString(),
+          groupId: autoLinkResult.groupId,
+          linked: true,
+          message: autoLinkResult.message
+        };
+      }
+
+      return {
+        success: true,
+        userId: newUserId.toString(),
+        linked: false,
+        message: 'New OAuth user created'
+      };
+
+    } catch (error) {
+      console.error('❌ linkOAuthAccount error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 }

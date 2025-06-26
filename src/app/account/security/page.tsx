@@ -4,15 +4,16 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { signIn, getProviders } from 'next-auth/react'
+import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AccountNavDropdown from '@/components/AccountNavDropDown'
 import AccountLinkingModal from '@/components/AccountLinkingModal'
 import { useAccountLinking } from '@/hooks/useAccountLinking'
 import { useUserActivities, getActivityIcon, getSeverityColor, formatTimeAgo } from '@/hooks/useUserActivities'
 import { useAccountStatus, getSecurityScoreColor, getSecurityScoreLabel, getSocialAccountIcon } from '@/hooks/useAccountStatus'
+import { useAuthMethodsRefresh } from '@/hooks/useAuthMethodsRefresh'
 import AccountStatusSidebar from '@/components/AccountStatusSidebar'
 import TwoFactorManagement from '@/components/TwoFactorManagement'
-import Link from 'next/link'
 
 interface AuthMethod {
   id: string
@@ -559,8 +560,6 @@ function AddSocialModal({
     }
   }
 
-
-
   if (!isOpen) return null
 
   const socialProviders = Object.values(providers).filter(
@@ -651,7 +650,10 @@ export default function SecurityPage() {
   const [showAddSocialModal, setShowAddSocialModal] = useState(false)
 
   // Account status hook
-  const { status: accountStatus, refreshStatus } = useAccountStatus()  
+  const { status: accountStatus, refreshStatus } = useAccountStatus()
+  
+  // 🔥 Navigation refresh hook - This is the key addition!
+  const { refreshNavigationAuthCount } = useAuthMethodsRefresh()
 
   const {
     candidates,
@@ -768,12 +770,18 @@ export default function SecurityPage() {
     
     if (urlParams.get('social_linked') === 'true') {
       setSuccess('Social account linked successfully!')
+      // 🔥 Refresh navigation when social account is linked
+      refreshNavigationAuthCount()
     } else if (urlParams.get('email_verified') === 'true') {
       const email = urlParams.get('email')
       setSuccess(email ? `Email ${email} verified successfully!` : 'Email verified successfully!')
+      // 🔥 Refresh navigation when email is verified
+      refreshNavigationAuthCount()
     } else if (urlParams.get('phone_verified') === 'true') {
       const phone = urlParams.get('phone')
       setSuccess(phone ? `Phone ${phone} verified successfully!` : 'Phone verified successfully!')
+      // 🔥 Refresh navigation when phone is verified
+      refreshNavigationAuthCount()
     } else if (urlParams.get('error')) {
       const errorType = urlParams.get('error')
       switch (errorType) {
@@ -804,7 +812,7 @@ export default function SecurityPage() {
     if (urlParams.toString()) {
       window.history.replaceState({}, '', '/account/security')
     }
-  }, [])
+  }, [refreshNavigationAuthCount])
 
   useEffect(() => {
     if (userProfile) {
@@ -828,6 +836,20 @@ export default function SecurityPage() {
     }
   }
 
+  // 🔥 Enhanced success handler that refreshes both local state and navigation
+  const handleMethodSuccess = async (message: string) => {
+    setSuccess(message)
+    await fetchUserProfile() // Refresh the profile data
+    refreshNavigationAuthCount() // 🔥 Refresh navigation count
+    refreshActivities() // Refresh activities to show the new event
+    refreshStatus() // Refresh account status
+  }
+
+  // Error handler
+  const handleMethodError = (errorMessage: string) => {
+    setError(errorMessage)
+  }
+
   const handleFindAccounts = async () => {
     if (!userProfile?.user) return
     
@@ -841,7 +863,8 @@ export default function SecurityPage() {
   const handleLinkAccounts = async (primaryUserId: string, secondaryUserIds: string[]) => {
     const success = await linkAccounts(primaryUserId, secondaryUserIds)
     if (success) {
-      await fetchUserProfile() // Refresh profile after linking
+      // 🔥 Use the enhanced success handler
+      await handleMethodSuccess('Accounts linked successfully!')
     }
     return success
   }
@@ -935,8 +958,8 @@ export default function SecurityPage() {
       const data = await response.json()
 
       if (response.ok) {
-        setSuccess(data.message || `${authMethod.type === 'oauth' ? authMethod.value + ' account' : authMethod.value} removed successfully`)
-        await fetchUserProfile() // Refresh the profile
+        // 🔥 Use the enhanced success handler
+        await handleMethodSuccess(data.message || `${authMethod.type === 'oauth' ? authMethod.value + ' account' : authMethod.value} removed successfully`)
       } else {
         setError(data.error || 'Failed to remove authentication method')
       }
@@ -981,8 +1004,8 @@ export default function SecurityPage() {
         const data = await response.json()
 
         if (response.ok) {
-          setSuccess(`Unverified email ${email} removed successfully`)
-          fetchUserProfile() // Refresh the profile
+          // 🔥 Use the enhanced success handler
+          await handleMethodSuccess(`Unverified email ${email} removed successfully`)
         } else {
           setError(data.error || 'Failed to remove email')
         }
@@ -1004,12 +1027,12 @@ export default function SecurityPage() {
     return 'Unverified'
   }
 
-  const handleModalSuccess = (message: string) => {
-    setSuccess(message)
-    fetchUserProfile() // Refresh the profile data
-    refreshActivities() // Refresh activities to show the new event
+  // 🔥 Updated modal success handler to use the enhanced method
+  const handleModalSuccess = async (message: string) => {
+    await handleMethodSuccess(message)
   }
 
+  // Modal error handler remains the same
   const handleModalError = (errorMessage: string) => {
     setError(errorMessage)
   }
@@ -1041,18 +1064,16 @@ export default function SecurityPage() {
 
   return (
     <ProtectedRoute>
-
       <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-
-         {/* Header */}
-         <div className="flex items-center justify-between mb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center space-x-3">
               <span>👤</span>
               <span>Account Security</span>
             </h1>
             <p className="mt-2 text-gray-600">
-            Manage your authentication methods and security settings
+              Manage your authentication methods and security settings
             </p>
           </div>
           
@@ -1150,7 +1171,7 @@ export default function SecurityPage() {
               </div>
             </div>
 
-            {/* ====== ADD 2FA COMPONENT HERE ====== */}
+            {/* Two-Factor Authentication */}
             <TwoFactorManagement />            
 
             {/* Add More to Sign-in or Link Accounts */}
@@ -1294,10 +1315,8 @@ export default function SecurityPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-
             {/* Enhanced Account Status */}
             <AccountStatusSidebar onRefresh={fetchUserProfile} />
-
 
             {/* Linked Accounts Summary */}
             {userProfile?.user?.hasLinkedAccounts && (
@@ -1320,7 +1339,6 @@ export default function SecurityPage() {
                 </div>
               </div>
             )}
-            
 
             {/* Security Tips Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -1365,8 +1383,6 @@ export default function SecurityPage() {
             </div>
           </div>
         </div>
-
-        
 
         {/* Account Linking Modal */}
         <AccountLinkingModal
