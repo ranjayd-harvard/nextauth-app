@@ -5,7 +5,6 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { signIn, getProviders } from 'next-auth/react'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import AccountNavDropdown from '@/components/AccountNavDropDown'
 import AccountLinkingModal from '@/components/AccountLinkingModal'
 import { useAccountLinking } from '@/hooks/useAccountLinking'
 import { useUserActivities, getActivityIcon, getSeverityColor, formatTimeAgo } from '@/hooks/useUserActivities'
@@ -1055,7 +1054,21 @@ export default function SecurityPage() {
             </p>
           </div>
           
-          <AccountNavDropdown currentPage="security" />
+          <div className="flex items-center space-x-3">
+
+            <Link
+              href="/account/profile"
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              🔐 Profile
+            </Link>
+            <Link
+              href="/account/settings"
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              ⚙️ Preferences
+            </Link>            
+          </div>
         </div>       
 
         {/* Success/Error Messages */}

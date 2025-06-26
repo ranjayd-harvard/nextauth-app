@@ -1,7 +1,7 @@
 // src/app/api/user/settings/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth'  // Fixed import
 import clientPromise from '@/lib/db'
 import { ObjectId } from 'mongodb'
 
@@ -266,6 +266,53 @@ export async function PATCH(req: NextRequest) {
 
   } catch (error) {
     console.error('❌ Patch settings error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE method to reset settings to defaults
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const client = await clientPromise
+    const users = client.db().collection('users')
+    
+    // Remove settings field to reset to defaults
+    const updateResult = await users.updateOne(
+      { _id: new ObjectId(session.user.id) },
+      { 
+        $unset: { settings: "" },
+        $set: { updatedAt: new Date() }
+      }
+    )
+
+    if (updateResult.matchedCount === 0) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    console.log(`✅ Settings reset to defaults for user: ${session.user.id}`)
+
+    return NextResponse.json({
+      success: true,
+      message: 'Settings reset to default values'
+    })
+
+  } catch (error) {
+    console.error('❌ Reset settings error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

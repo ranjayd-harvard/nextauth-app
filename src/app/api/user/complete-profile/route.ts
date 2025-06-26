@@ -253,7 +253,7 @@ export async function PATCH(req: NextRequest) {
       )
     }
 
-    const allowedFields = ['name', 'bio', 'location', 'website', 'timezone', 'image', 'avatarType', 'phoneNumber']
+    const allowedFields = ['name', 'bio', 'location', 'website', 'timezone', 'image', 'avatarType', 'phoneNumber', 'lastActivity']
     
     if (!allowedFields.includes(field)) {
       return NextResponse.json(

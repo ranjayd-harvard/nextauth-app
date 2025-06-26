@@ -1,7 +1,7 @@
 // src/app/api/user/activities/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { enhancedAuthOptions as authOptions } from '@/lib/enhanced-auth'
 import { ActivityTracker, ActivityCategory, ActivityEvent } from '@/lib/activity-tracker'
 
 export async function GET(req: NextRequest) {

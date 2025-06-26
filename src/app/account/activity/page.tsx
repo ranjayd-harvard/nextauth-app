@@ -3,6 +3,7 @@
 
 import { useState } from 'react'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import AccountNavDropdown from '@/components/AccountNavDropDown'
 import { useUserActivities, getActivityIcon, getSeverityColor, getCategoryColor, formatTimeAgo, UserActivity } from '@/hooks/useUserActivities'
 import { ActivityCategory } from '@/lib/activity-tracker'
 
@@ -60,12 +61,16 @@ export default function UserActivityPage() {
   return (
     <ProtectedRoute>
       <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Activity History</h1>
-          <p className="mt-2 text-gray-600">
-            Track all your account activities and security events
-          </p>
+        {/* Header with Navigation Dropdown */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Activity History</h1>
+            <p className="mt-2 text-gray-600">
+              Track all your account activities and security events
+            </p>
+          </div>
+          
+          <AccountNavDropdown currentPage="activity" />
         </div>
 
         {/* Activity Summary Cards */}
@@ -103,7 +108,7 @@ export default function UserActivityPage() {
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Last Sign In</p>
                   <p className="text-sm font-bold text-gray-900">
-                    {summary.recentLogin ? formatTimeAgo(summary.recentLogin) : 'Never'}
+                    {summary.recentLogin ? formatTimeAgo(new Date(summary.recentLogin)) : 'Never'}
                   </p>
                 </div>
               </div>
@@ -111,71 +116,61 @@ export default function UserActivityPage() {
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex items-center">
-                <div className="p-2 bg-orange-100 rounded-lg">
+                <div className="p-2 bg-yellow-100 rounded-lg">
                   <span className="text-xl">⚠️</span>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-600">High Priority</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {(summary.bySeverity.high || 0) + (summary.bySeverity.critical || 0)}
-                  </p>
+                  <p className="text-sm font-medium text-gray-600">Risk Events</p>
+                  <p className="text-2xl font-bold text-gray-900">{summary.riskEvents || 0}</p>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Controls */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        {/* Filters and Controls */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-            {/* Category Filter */}
+            {/* Category Filters */}
             <div className="flex flex-wrap gap-2">
               {categories.map((category) => (
                 <button
                   key={category.key}
                   onClick={() => handleCategoryFilter(category.key)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                     selectedCategory === category.key
-                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                   }`}
                 >
                   <span>{category.icon}</span>
                   <span>{category.label}</span>
-                  {summary && category.key !== 'all' && (
-                    <span className="bg-white text-gray-600 px-2 py-0.5 rounded-full text-xs">
-                      {summary.byCategory[category.key as ActivityCategory] || 0}
-                    </span>
-                  )}
                 </button>
               ))}
             </div>
 
             {/* View Mode Toggle */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">View:</span>
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    viewMode === 'list'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  List
-                </button>
-                <button
-                  onClick={() => setViewMode('timeline')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    viewMode === 'timeline'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Timeline
-                </button>
-              </div>
+            <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                List
+              </button>
+              <button
+                onClick={() => setViewMode('timeline')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'timeline'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Timeline
+              </button>
             </div>
           </div>
         </div>
@@ -261,7 +256,7 @@ export default function UserActivityPage() {
                           )}
                         </div>
                         
-                        {Object.keys(activity.details).length > 0 && (
+                        {Object.keys(activity.details || {}).length > 0 && (
                           <div className="mt-2">
                             <details className="text-xs">
                               <summary className="cursor-pointer text-blue-600 hover:text-blue-700">

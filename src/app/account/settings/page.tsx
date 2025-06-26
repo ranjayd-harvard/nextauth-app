@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import Link from 'next/link'
+import AccountNavDropdown from '@/components/AccountNavDropDown'
 
 interface UserSettings {
   notifications: {
@@ -102,6 +102,7 @@ export default function AccountSettings() {
 
       if (response.ok) {
         setSuccess('Settings saved successfully!')
+        setTimeout(() => setSuccess(''), 5000)
       } else {
         setError(data.error || 'Failed to save settings')
       }
@@ -123,9 +124,12 @@ export default function AccountSettings() {
 
       if (response.ok) {
         await fetchSettings() // Refresh settings
+        setSuccess(`${section} settings updated successfully!`)
+        setTimeout(() => setSuccess(''), 3000)
       }
     } catch (error) {
       console.error('Error updating setting:', error)
+      setError(`Failed to update ${section} settings`)
     }
   }
 
@@ -135,7 +139,7 @@ export default function AccountSettings() {
       return
     }
   
-    setIsLoading(true)  // Using your existing isLoading state
+    setIsDeletingAccount(true)
     setError('')
   
     try {
@@ -150,33 +154,27 @@ export default function AccountSettings() {
         })
       })
   
-      // First check if the response is ok
       if (!response.ok) {
-        // Try to get error message from response
         let errorMessage = 'Failed to delete account'
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorMessage
         } catch {
-          // If JSON parsing fails, use default message
           errorMessage = `Server error: ${response.status}`
         }
         setError(errorMessage)
         return
       }
   
-      // Try to parse successful response
       let data
       try {
         data = await response.json()
       } catch {
-        // If JSON parsing fails but response was ok, assume success
         console.log('Account deletion completed')
         await signOut({ callbackUrl: '/' })
         return
       }
   
-      // Handle successful response with data
       if (data.success) {
         await signOut({ callbackUrl: '/' })
       } else {
@@ -187,7 +185,7 @@ export default function AccountSettings() {
       console.error('Delete account error:', error)
       setError('An error occurred while deleting your account')
     } finally {
-      setIsLoading(false)  // Using your existing isLoading state
+      setIsDeletingAccount(false)
     }
   }
 
@@ -195,7 +193,6 @@ export default function AccountSettings() {
     if (confirm('Are you sure you want to reset all settings to default values?')) {
       setIsSaving(true)
       try {
-        // Delete current settings (API will return defaults)
         await fetch('/api/user/settings', { method: 'DELETE' })
         await fetchSettings()
         setSuccess('Settings reset to default values')
@@ -205,6 +202,29 @@ export default function AccountSettings() {
         setIsSaving(false)
       }
     }
+  }
+
+  // Helper functions for descriptions
+  function getNotificationDescription(key: string): string {
+    const descriptions: { [key: string]: string } = {
+      email: 'Receive notifications via email',
+      sms: 'Receive notifications via SMS',
+      push: 'Receive push notifications in browser',
+      security: 'Security alerts and login notifications',
+      marketing: 'Product updates and promotional content',
+      weekly_summary: 'Weekly summary of account activity'
+    }
+    return descriptions[key] || 'Notification setting'
+  }
+
+  function getPrivacyDescription(key: string): string {
+    const descriptions: { [key: string]: string } = {
+      show_email: 'Display email address on public profile',
+      show_phone: 'Display phone number on public profile',
+      analytics_tracking: 'Allow usage analytics and tracking',
+      personalized_ads: 'Show personalized advertisements'
+    }
+    return descriptions[key] || 'Privacy setting'
   }
 
   if (isLoading || !settings) {
@@ -228,7 +248,7 @@ export default function AccountSettings() {
   return (
     <ProtectedRoute>
       <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Header */}
+        {/* Header with Dropdown */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center space-x-3">
@@ -240,20 +260,7 @@ export default function AccountSettings() {
             </p>
           </div>
           
-          <div className="flex items-center space-x-3">
-            <Link
-              href="/account/profile"
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-            >
-              👤 Profile
-            </Link>
-            <Link
-              href="/account/security"
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-            >
-              🔐 Security
-            </Link>
-          </div>
+          <AccountNavDropdown currentPage="settings" />
         </div>
 
         {/* Success/Error Messages */}
@@ -287,27 +294,27 @@ export default function AccountSettings() {
                 Choose how you want to be notified about account activity
               </p>
             </div>
-            
+
             <div className="p-6">
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Object.entries(settings.notifications).map(([key, value]) => (
                   <div key={key} className="flex items-center justify-between">
                     <div>
                       <label className="text-sm font-medium text-gray-900 capitalize">
-                        {key.replace('_', ' ')} Notifications
+                        {key.replace('_', ' ')}
                       </label>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-gray-500">
                         {getNotificationDescription(key)}
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
+                      <input
+                        type="checkbox"
                         checked={value}
                         onChange={(e) => handleSettingChange('notifications', key, e.target.checked)}
+                        className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                   </div>
                 ))}
@@ -323,72 +330,48 @@ export default function AccountSettings() {
                 <span>Privacy</span>
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Control your privacy and data sharing preferences
+                Control what information is visible to others
               </p>
             </div>
-            
+
             <div className="p-6">
               <div className="space-y-6">
+                {/* Profile Visibility */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-3">
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
                     Profile Visibility
                   </label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {[
-                      { value: 'public', label: 'Public', description: 'Anyone can see your profile' },
-                      { value: 'private', label: 'Private', description: 'Only you can see your profile' },
-                      { value: 'friends', label: 'Friends', description: 'Only friends can see your profile' }
-                    ].map((option) => (
-                      <label
-                        key={option.value}
-                        className={`relative flex cursor-pointer rounded-lg border p-4 focus:outline-none ${
-                          settings.privacy.profile_visibility === option.value
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-300'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="profile_visibility"
-                          value={option.value}
-                          checked={settings.privacy.profile_visibility === option.value}
-                          onChange={(e) => handleSettingChange('privacy', 'profile_visibility', e.target.value)}
-                          className="sr-only"
-                        />
-                        <div className="flex w-full justify-between">
-                          <div className="flex flex-col">
-                            <span className="block text-sm font-medium text-gray-900">
-                              {option.label}
-                            </span>
-                            <span className="block text-sm text-gray-500">
-                              {option.description}
-                            </span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  <select
+                    value={settings.privacy.profile_visibility}
+                    onChange={(e) => handleSettingChange('privacy', 'profile_visibility', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="public">Public - Anyone can see</option>
+                    <option value="private">Private - Only you can see</option>
+                    <option value="friends">Friends - Only connected accounts</option>
+                  </select>
                 </div>
 
-                <div className="space-y-4">
+                {/* Privacy Toggles */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {Object.entries(settings.privacy).filter(([key]) => key !== 'profile_visibility').map(([key, value]) => (
                     <div key={key} className="flex items-center justify-between">
                       <div>
                         <label className="text-sm font-medium text-gray-900 capitalize">
                           {key.replace('_', ' ')}
                         </label>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-gray-500">
                           {getPrivacyDescription(key)}
                         </p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="sr-only peer" 
+                        <input
+                          type="checkbox"
                           checked={value as boolean}
                           onChange={(e) => handleSettingChange('privacy', key, e.target.checked)}
+                          className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                       </label>
                     </div>
                   ))}
@@ -401,16 +384,17 @@ export default function AccountSettings() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
-                <span>🎛️</span>
+                <span>🎨</span>
                 <span>Preferences</span>
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Customize your experience and interface settings
+                Customize your experience
               </p>
             </div>
-            
+
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Language */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Language
@@ -418,20 +402,17 @@ export default function AccountSettings() {
                   <select
                     value={settings.preferences.language}
                     onChange={(e) => handleSettingChange('preferences', 'language', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="en">English</option>
                     <option value="es">Spanish</option>
                     <option value="fr">French</option>
                     <option value="de">German</option>
-                    <option value="it">Italian</option>
-                    <option value="pt">Portuguese</option>
                     <option value="ja">Japanese</option>
-                    <option value="ko">Korean</option>
-                    <option value="zh">Chinese</option>
                   </select>
                 </div>
 
+                {/* Timezone */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Timezone
@@ -439,7 +420,7 @@ export default function AccountSettings() {
                   <select
                     value={settings.preferences.timezone}
                     onChange={(e) => handleSettingChange('preferences', 'timezone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="UTC">UTC</option>
                     <option value="America/New_York">Eastern Time</option>
@@ -448,13 +429,11 @@ export default function AccountSettings() {
                     <option value="America/Los_Angeles">Pacific Time</option>
                     <option value="Europe/London">London</option>
                     <option value="Europe/Paris">Paris</option>
-                    <option value="Europe/Berlin">Berlin</option>
                     <option value="Asia/Tokyo">Tokyo</option>
-                    <option value="Asia/Shanghai">Shanghai</option>
-                    <option value="Australia/Sydney">Sydney</option>
                   </select>
                 </div>
 
+                {/* Date Format */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Date Format
@@ -462,15 +441,16 @@ export default function AccountSettings() {
                   <select
                     value={settings.preferences.date_format}
                     onChange={(e) => handleSettingChange('preferences', 'date_format', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="MM/DD/YYYY">MM/DD/YYYY (US)</option>
-                    <option value="DD/MM/YYYY">DD/MM/YYYY (UK)</option>
-                    <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
-                    <option value="DD.MM.YYYY">DD.MM.YYYY (EU)</option>
+                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    <option value="DD-MM-YYYY">DD-MM-YYYY</option>
                   </select>
                 </div>
 
+                {/* Theme */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Theme
@@ -478,7 +458,7 @@ export default function AccountSettings() {
                   <select
                     value={settings.preferences.theme}
                     onChange={(e) => handleSettingChange('preferences', 'theme', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="light">Light</option>
                     <option value="dark">Dark</option>
@@ -486,6 +466,7 @@ export default function AccountSettings() {
                   </select>
                 </div>
 
+                {/* Email Frequency */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Email Frequency
@@ -493,7 +474,7 @@ export default function AccountSettings() {
                   <select
                     value={settings.preferences.email_frequency}
                     onChange={(e) => handleSettingChange('preferences', 'email_frequency', e.target.value)}
-                    className="w-full md:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="immediate">Immediate</option>
                     <option value="daily">Daily Digest</option>
@@ -509,147 +490,110 @@ export default function AccountSettings() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900 flex items-center space-x-2">
-                <span>🔐</span>
+                <span>🛡️</span>
                 <span>Security</span>
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Manage your account security and authentication settings
+                Advanced security and session settings
               </p>
             </div>
-            
+
             <div className="p-6">
               <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <label className="text-sm font-medium text-gray-900">Login Notifications</label>
-                    <p className="text-xs text-gray-600">Get notified when someone signs into your account</p>
+                {/* Security Toggles */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-sm font-medium text-gray-900">
+                        Two-Factor Authentication
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Require additional verification for login
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.security.two_factor_enabled}
+                        onChange={(e) => handleSettingChange('security', 'two_factor_enabled', e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="sr-only peer" 
-                      checked={settings.security.login_notifications}
-                      onChange={(e) => handleSettingChange('security', 'login_notifications', e.target.checked)}
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-sm font-medium text-gray-900">
+                        Login Notifications
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Get notified of new login attempts
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.security.login_notifications}
+                        onChange={(e) => handleSettingChange('security', 'login_notifications', e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-sm font-medium text-gray-900">
+                        Password Change Required
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Force password change on next login
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.security.password_change_required}
+                        onChange={(e) => handleSettingChange('security', 'password_change_required', e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Session Timeout */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                      Session Timeout (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="-1"
+                      max="1440"
+                      value={settings.security.session_timeout}
+                      onChange={(e) => handleSettingChange('security', 'session_timeout', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="30"
                     />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Session Timeout
-                  </label>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Automatically sign out after period of inactivity
-                  </p>
-                  <select
-                    value={settings.security.session_timeout}
-                    onChange={(e) => handleSettingChange('security', 'session_timeout', parseInt(e.target.value))}
-                    className="w-full md:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value={15}>15 minutes</option>
-                    <option value={30}>30 minutes</option>
-                    <option value={60}>1 hour</option>
-                    <option value={240}>4 hours</option>
-                    <option value={720}>12 hours</option>
-                    <option value={-1}>Never</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div>
-                    <label className="text-sm font-medium text-gray-900">Two-Factor Authentication</label>
-                    <p className="text-xs text-gray-600">Add an extra layer of security to your account</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Set to -1 for no timeout, 0 for immediate timeout
+                    </p>
                   </div>
-                  <Link
-                    href="/account/security"
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                  >
-                    {settings.security.two_factor_enabled ? 'Manage 2FA' : 'Enable 2FA'}
-                  </Link>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <label className="text-sm font-medium text-gray-900">Password Change Required</label>
-                    <p className="text-xs text-gray-600">Force password change on next login</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="sr-only peer" 
-                      checked={settings.security.password_change_required}
-                      onChange={(e) => handleSettingChange('security', 'password_change_required', e.target.checked)}
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Danger Zone */}
-          <div className="bg-white rounded-xl shadow-sm border border-red-200">
-            <div className="px-6 py-4 border-b border-red-200">
-              <h2 className="text-xl font-semibold text-red-900 flex items-center space-x-2">
-                <span>⚠️</span>
-                <span>Danger Zone</span>
-              </h2>
-              <p className="text-sm text-red-600 mt-1">
-                Irreversible and destructive actions
-              </p>
-            </div>
-            
-            <div className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div>
-                    <h3 className="text-sm font-medium text-red-900">Delete Account</h3>
-                    <p className="text-xs text-red-600">
-                      Permanently delete your account and all associated data
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowDeleteModal(true)}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                  >
-                    Delete Account
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div>
-                    <h3 className="text-sm font-medium text-yellow-900">Reset All Settings</h3>
-                    <p className="text-xs text-yellow-600">
-                      Reset all preferences to default values
-                    </p>
-                  </div>
-                  <button 
-                    onClick={resetAllSettings}
-                    className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium"
-                  >
-                    Reset Settings
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Save Button */}
-          <div className="flex justify-end space-x-4">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Reset Changes
-            </button>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4">
             <button
               onClick={saveSettings}
               disabled={isSaving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 px-6 rounded-lg font-medium transition-colors"
             >
               {isSaving ? (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-center space-x-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   <span>Saving...</span>
                 </div>
@@ -657,73 +601,70 @@ export default function AccountSettings() {
                 'Save All Settings'
               )}
             </button>
+
+            <button
+              onClick={resetAllSettings}
+              disabled={isSaving}
+              className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+            >
+              Reset to Defaults
+            </button>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="bg-red-50 rounded-xl border border-red-200 p-6">
+            <h3 className="text-lg font-semibold text-red-900 flex items-center space-x-2 mb-4">
+              <span>⚠️</span>
+              <span>Danger Zone</span>
+            </h3>
+            <p className="text-sm text-red-700 mb-4">
+              These actions are permanent and cannot be undone.
+            </p>
+            
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors"
+            >
+              Delete Account Permanently
+            </button>
           </div>
         </div>
 
         {/* Delete Account Modal */}
         {showDeleteModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6">
-              <div className="flex items-center space-x-3 mb-4">
-                <span className="text-2xl">⚠️</span>
-                <h3 className="text-lg font-semibold text-gray-900">Delete Account</h3>
-              </div>
-              
-              <div className="mb-6">
-                <p className="text-sm text-gray-600 mb-4">
-                  This action cannot be undone. This will permanently delete your account and remove all associated data from our servers.
-                </p>
-                
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                  <h4 className="font-medium text-red-900 mb-2">What will be deleted:</h4>
-                  <ul className="text-sm text-red-700 space-y-1">
-                    <li>• Your profile and personal information</li>
-                    <li>• All linked authentication methods</li>
-                    <li>• Account groups and linked accounts</li>
-                    <li>• Settings and preferences</li>
-                    <li>• Activity history and logs</li>
-                  </ul>
-                </div>
-
-                {session?.user?.hasLinkedAccounts && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Note:</strong> You have linked accounts. Deleting this account will transfer 
-                      primary ownership to another linked account if available.
-                    </p>
-                  </div>
-                )}
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Type <strong>DELETE</strong> to confirm:
-                  </label>
-                  <input
-                    type="text"
-                    value={deleteConfirmText}
-                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                    placeholder="Type DELETE to confirm"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end space-x-3">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Delete Account
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                This action cannot be undone. This will permanently delete your account and remove all associated data.
+              </p>
+              <p className="text-sm text-gray-600 mb-4">
+                Please type <strong>DELETE</strong> to confirm:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 mb-4"
+                placeholder="Type DELETE here"
+              />
+              <div className="flex space-x-3">
                 <button
                   onClick={() => {
                     setShowDeleteModal(false)
                     setDeleteConfirmText('')
                     setError('')
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  disabled={isDeletingAccount}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAccountDeletion}
-                  disabled={deleteConfirmText !== 'DELETE' || isDeletingAccount}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  disabled={isDeletingAccount || deleteConfirmText !== 'DELETE'}
+                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white py-2 px-4 rounded-lg font-medium transition-colors"
                 >
                   {isDeletingAccount ? (
                     <div className="flex items-center space-x-2">
@@ -741,27 +682,4 @@ export default function AccountSettings() {
       </div>
     </ProtectedRoute>
   )
-}
-
-// Helper functions for descriptions
-function getNotificationDescription(key: string): string {
-  const descriptions = {
-    email: 'Receive notifications via email',
-    sms: 'Receive notifications via SMS',
-    push: 'Receive push notifications in browser',
-    security: 'Security alerts and login notifications',
-    marketing: 'Product updates and promotional content',
-    weekly_summary: 'Weekly summary of account activity'
-  }
-  return descriptions[key] || 'Notification setting'
-}
-
-function getPrivacyDescription(key: string): string {
-  const descriptions = {
-    show_email: 'Display email address on public profile',
-    show_phone: 'Display phone number on public profile',
-    analytics_tracking: 'Allow usage analytics and tracking',
-    personalized_ads: 'Show personalized advertisements'
-  }
-  return descriptions[key] || 'Privacy setting'
 }
